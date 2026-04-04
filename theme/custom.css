@@ -1,0 +1,23 @@
+/* Navigation link back to home */
+.nav-chapters.previous[href="../index.html"]::before,
+.nav-chapters.next[href="../index.html"]::before {
+    content: "All Editions";
+}
+
+/* Better code block styling */
+pre code {
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+/* Table styling */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+}
+
+table th, table td {
+    padding: 0.5rem 1rem;
+    text-align: left;
+}
