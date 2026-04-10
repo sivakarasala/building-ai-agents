@@ -2,6 +2,8 @@
 
 A hands-on guide to building a fully functional CLI AI agent in Go — from raw HTTP calls to a polished terminal UI. No SDK, no framework, just the standard library and a few well-chosen modules.
 
+> Inspired by and adapted from [Hendrixer/agents-v2](https://github.com/Hendrixer/agents-v2) and the [AI Agents v2 course on Frontend Masters](https://frontendmasters.com/courses/ai-agents-v2/) by Scott Moss. The original course builds the agent in TypeScript; this edition reimagines the same architecture in idiomatic Go.
+
 ---
 
 ## Why Go for AI Agents?

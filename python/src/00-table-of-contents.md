@@ -2,6 +2,8 @@
 
 A hands-on guide to building a fully functional AI agent with tool calling, evaluations, context management, and human-in-the-loop safety — all from scratch using Python.
 
+> Inspired by and adapted from [Hendrixer/agents-v2](https://github.com/Hendrixer/agents-v2) and the [AI Agents v2 course on Frontend Masters](https://frontendmasters.com/courses/ai-agents-v2/) by Scott Moss. The original course builds the agent in TypeScript; this edition reimagines the same architecture in Python.
+
 ---
 
 ## What You'll Build

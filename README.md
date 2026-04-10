@@ -4,6 +4,8 @@ A hands-on guide to building a fully functional CLI AI agent with tool calling, 
 
 **[Read Online →](https://sivakarasala.github.io/building-ai-agents/)**
 
+> This book series is inspired by and adapted from [Hendrixer/agents-v2](https://github.com/Hendrixer/agents-v2) and the [AI Agents v2 course on Frontend Masters](https://frontendmasters.com/courses/ai-agents-v2/) by Scott Moss. The original course builds the agent in TypeScript; these editions reimagine the same architecture across five languages.
+
 ---
 
 ## Editions

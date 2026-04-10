@@ -2,6 +2,8 @@
 
 Suggested reading order based on your background.
 
+> Inspired by and adapted from [Hendrixer/agents-v2](https://github.com/Hendrixer/agents-v2) and the [AI Agents v2 course on Frontend Masters](https://frontendmasters.com/courses/ai-agents-v2/) by Scott Moss.
+
 ## If You're Picking One Edition
 
 - **[TypeScript](https://sivakarasala.github.io/building-ai-agents/typescript/)** — Most polished path. Uses the Vercel AI SDK, React+Ink for UI. Best if you want to ship something fast.

@@ -2,6 +2,8 @@
 
 Build a fully functional CLI AI agent from raw HTTP calls — no SDK abstractions. Parse SSE streams by hand, manage ownership across async tool execution, and build a terminal UI with immediate-mode rendering.
 
+> Inspired by and adapted from [Hendrixer/agents-v2](https://github.com/Hendrixer/agents-v2) and the [AI Agents v2 course on Frontend Masters](https://frontendmasters.com/courses/ai-agents-v2/) by Scott Moss. The original course builds the agent in TypeScript; this edition reimagines the same architecture in Rust.
+
 ---
 
 ## Why Rust for AI Agents?
