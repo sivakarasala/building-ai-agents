@@ -136,27 +136,27 @@ import (
 // RunSingleTurn sends a single user message and returns the tool name the model chose.
 // Returns "" if no tool was called.
 func RunSingleTurn(ctx context.Context, client *api.Client, defs []api.ToolDefinition, input string) (string, error) {
-    req := api.ChatCompletionRequest{
-        Model: "gpt-4.1-mini",
-        Messages: []api.Message{
-            api.NewSystemMessage(agent.SystemPrompt),
+    req := api.ResponsesRequest{
+        Model:        "gpt-5-mini",
+        Instructions: agent.SystemPrompt,
+        Input: []api.InputItem{
             api.NewUserMessage(input),
         },
         Tools: defs,
     }
 
-    resp, err := client.ChatCompletion(ctx, req)
+    resp, err := client.CreateResponse(ctx, req)
     if err != nil {
         return "", err
     }
 
-    if len(resp.Choices) == 0 {
-        return "", nil
+    // Walk the output items and return the first function_call name we see.
+    for _, item := range resp.Output {
+        if item.Type == "function_call" {
+            return item.Name, nil
+        }
     }
-    if len(resp.Choices[0].Message.ToolCalls) == 0 {
-        return "", nil
-    }
-    return resp.Choices[0].Message.ToolCalls[0].Function.Name, nil
+    return "", nil
 }
 ```
 

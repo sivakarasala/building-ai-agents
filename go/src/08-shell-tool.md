@@ -42,18 +42,16 @@ func (Shell) RequiresApproval() bool   { return true }
 
 func (Shell) Definition() api.ToolDefinition {
     return api.ToolDefinition{
-        Type: "function",
-        Function: api.FunctionDefinition{
-            Name:        "shell",
-            Description: "Execute a shell command and return its combined stdout and stderr. Use for running build tools, tests, git, and other CLI utilities. The command runs with a 30 second timeout.",
-            Parameters: json.RawMessage(`{
-                "type": "object",
-                "properties": {
-                    "command": {"type": "string", "description": "The shell command to execute"}
-                },
-                "required": ["command"]
-            }`),
-        },
+        Type:        "function",
+        Name:        "shell",
+        Description: "Execute a shell command and return its combined stdout and stderr. Use for running build tools, tests, git, and other CLI utilities. The command runs with a 30 second timeout.",
+        Parameters: json.RawMessage(`{
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "The shell command to execute"}
+            },
+            "required": ["command"]
+        }`),
     }
 }
 
@@ -124,23 +122,21 @@ func (RunCode) RequiresApproval() bool   { return true }
 
 func (RunCode) Definition() api.ToolDefinition {
     return api.ToolDefinition{
-        Type: "function",
-        Function: api.FunctionDefinition{
-            Name:        "run_code",
-            Description: "Write a code snippet to a temp file and execute it with the given interpreter. Useful for quick computations, experiments, or one-off scripts. 30 second timeout.",
-            Parameters: json.RawMessage(`{
-                "type": "object",
-                "properties": {
-                    "language": {
-                        "type": "string",
-                        "description": "Language to run. Supported: python, node, bash, go.",
-                        "enum": ["python", "node", "bash", "go"]
-                    },
-                    "code": {"type": "string", "description": "The source code to execute"}
+        Type:        "function",
+        Name:        "run_code",
+        Description: "Write a code snippet to a temp file and execute it with the given interpreter. Useful for quick computations, experiments, or one-off scripts. 30 second timeout.",
+        Parameters: json.RawMessage(`{
+            "type": "object",
+            "properties": {
+                "language": {
+                    "type": "string",
+                    "description": "Language to run. Supported: python, node, bash, go.",
+                    "enum": ["python", "node", "bash", "go"]
                 },
-                "required": ["language", "code"]
-            }`),
-        },
+                "code": {"type": "string", "description": "The source code to execute"}
+            },
+            "required": ["language", "code"]
+        }`),
     }
 }
 
@@ -255,6 +251,7 @@ A prompt that exercises both:
 
 ```go
 api.NewUserMessage("Write a Python script that prints the first ten Fibonacci numbers, run it, and tell me the output."),
+
 ```
 
 Expected output (abbreviated):

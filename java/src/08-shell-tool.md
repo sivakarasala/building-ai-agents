@@ -19,7 +19,6 @@ Create `tools/Shell.java`:
 package com.example.agents.tools;
 
 import com.example.agents.agent.Tool;
-import com.example.agents.api.Messages.FunctionDefinition;
 import com.example.agents.api.Messages.ToolDefinition;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -47,11 +46,12 @@ public record Shell(ObjectMapper mapper) implements Tool {
                 ),
                 "required", List.of("command")
         ));
-        return new ToolDefinition("function", new FunctionDefinition(
+        return new ToolDefinition(
+                "function",
                 "shell",
                 "Execute a shell command and return its combined stdout and stderr. Use for running build tools, tests, git, and other CLI utilities. The command runs with a 30 second timeout.",
                 params
-        ));
+        );
     }
 
     @Override
@@ -106,7 +106,6 @@ Create `tools/RunCode.java`:
 package com.example.agents.tools;
 
 import com.example.agents.agent.Tool;
-import com.example.agents.api.Messages.FunctionDefinition;
 import com.example.agents.api.Messages.ToolDefinition;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -151,11 +150,12 @@ public record RunCode(ObjectMapper mapper) implements Tool {
                 ),
                 "required", List.of("language", "code")
         ));
-        return new ToolDefinition("function", new FunctionDefinition(
+        return new ToolDefinition(
+                "function",
                 "run_code",
                 "Write a code snippet to a temp file and execute it with the given interpreter. Useful for quick computations, experiments, or one-off scripts. 30 second timeout.",
                 params
-        ));
+        );
     }
 
     @Override
@@ -226,7 +226,7 @@ registry.register(new RunCode(mapper));
 A prompt that exercises both:
 
 ```java
-Message.user("Write a Python script that prints the first ten Fibonacci numbers, run it, and tell me the output.")
+InputItem.user("Write a Python script that prints the first ten Fibonacci numbers, run it, and tell me the output.")
 ```
 
 Expected output (abbreviated):

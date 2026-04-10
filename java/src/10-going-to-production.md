@@ -18,12 +18,12 @@ This chapter walks through the changes that turn a demo into something you'd let
 OpenAI returns transient `429` (rate limit) and `5xx` (server) errors. They're almost always solved by waiting a bit and trying again. Add a tiny retry helper to `OpenAiClient.java`:
 
 ```java
-public ChatCompletionResponse chatCompletionWithRetry(ChatCompletionRequest req) throws Exception {
+public ResponsesResponse createResponseWithRetry(ResponsesRequest req) throws Exception {
     Exception last = null;
     long delay = 500;
     for (int attempt = 0; attempt < 4; attempt++) {
         try {
-            return chatCompletion(req);
+            return createResponse(req);
         } catch (Exception e) {
             last = e;
             if (!isRetryable(e)) throw e;
@@ -67,7 +67,7 @@ private void rateLimit() throws InterruptedException {
     }
 }
 
-// Inside chatCompletion / chatCompletionStream, before sending:
+// Inside createResponse / createResponseStream, before sending:
 rateLimit();
 try {
     // ... existing send logic ...
@@ -112,10 +112,10 @@ An exception in a tool currently bubbles up to the agent loop's top-level `catch
 ```java
 String result;
 try {
-    result = registry.execute(tc.function().name(), tc.function().arguments());
+    result = registry.execute(tc.name(), tc.arguments());
 } catch (Throwable t) {
     // Throwable, not Exception — catch StackOverflowError and friends.
-    result = "Error: tool " + tc.function().name() + " failed: " + t.getMessage();
+    result = "Error: tool " + tc.name() + " failed: " + t.getMessage();
 }
 ```
 
@@ -185,10 +185,10 @@ Before shipping the agent to anyone who isn't you:
 
 Step back for a moment. Across ten chapters you have:
 
-- Modeled the OpenAI API as records and called it with `java.net.http.HttpClient`
+- Modeled the OpenAI Responses API as records and called it with `java.net.http.HttpClient`
 - Defined a sealed `Tool` interface and a registry that holds heterogeneous tool types
 - Built an evaluation framework with single-turn scoring, multi-turn rubrics, and an LLM judge
-- Parsed Server-Sent Events with `BodyHandlers.ofLines()` and accumulated fragmented tool calls
+- Parsed Server-Sent Events with `BodyHandlers.ofLines()` and captured complete function calls from the terminal `response.completed` event
 - Implemented file, web, shell, and code-execution tools using `java.nio.file` and `ProcessBuilder`
 - Estimated tokens and compacted long conversations with an LLM-generated summary
 - Built a Lanterna terminal UI driven by a single render thread and a `BlockingQueue`

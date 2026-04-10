@@ -90,25 +90,31 @@ build/
 .idea/
 ```
 
-## The OpenAI Chat Completions API
+## The OpenAI Responses API
 
-Before writing code, let's understand the API we're calling. At its core:
+Before writing code, let's understand the API we're calling. We're using OpenAI's **Responses API** — the modern replacement for Chat Completions. It's built around a list of "input items" (roles or typed items like function calls) and returns a list of "output items".
 
 ```
-POST https://api.openai.com/v1/chat/completions
+POST https://api.openai.com/v1/responses
 Authorization: Bearer <your-api-key>
 Content-Type: application/json
 
 {
-  "model": "gpt-4.1-mini",
-  "messages": [
-    {"role": "system", "content": "You are a helpful assistant."},
+  "model": "gpt-5-mini",
+  "instructions": "You are a helpful assistant.",
+  "input": [
     {"role": "user", "content": "What is an AI agent?"}
   ]
 }
 ```
 
-The response is a JSON object with a `choices` array. The first choice's `message.content` is the assistant's reply. Let's model that in Java.
+The response is a JSON object with an `output` array (assistant messages, function calls, etc.) and a convenience `output_text` field that concatenates all assistant text. A few things differ from Chat Completions:
+
+- The system prompt is the top-level **`instructions`** field, not a message in the array.
+- The conversation lives in **`input`**, a heterogeneous list — role-based messages mixed with typed items like `function_call` and `function_call_output`.
+- The result is **`output`**, a list of typed output items.
+
+Let's model that in Java.
 
 ## API Records
 
@@ -127,64 +133,101 @@ import java.util.List;
 public final class Messages {
     private Messages() {}
 
-    public record Message(
+    /**
+     * One item in the Responses API {@code input} array.
+     *
+     * <p>Intentionally one record that can represent either a role-based
+     * message ({role, content}) or a typed item like
+     * {type:"function_call", call_id, name, arguments} and
+     * {type:"function_call_output", call_id, output}. Null fields are
+     * dropped from the wire format by {@code @JsonInclude(NON_NULL)}.
+     */
+    public record InputItem(
+            // Role-based message fields
             String role,
             String content,
-            @JsonProperty("tool_calls") List<ToolCall> toolCalls,
-            @JsonProperty("tool_call_id") String toolCallId
+
+            // Typed item fields
+            String type,
+            @JsonProperty("call_id") String callId,
+            String name,
+            String arguments,   // JSON string for function_call
+            String output       // result text for function_call_output
     ) {
-        public static Message system(String content)    { return new Message("system",    content, null, null); }
-        public static Message user(String content)      { return new Message("user",      content, null, null); }
-        public static Message assistant(String content) { return new Message("assistant", content, null, null); }
-        public static Message tool(String toolCallId, String content) {
-            return new Message("tool", content, null, toolCallId);
+        public static InputItem user(String content) {
+            return new InputItem("user", content, null, null, null, null, null);
+        }
+
+        public static InputItem assistant(String content) {
+            return new InputItem("assistant", content, null, null, null, null, null);
+        }
+
+        public static InputItem functionCall(String callId, String name, String argumentsJson) {
+            return new InputItem(null, null, "function_call", callId, name, argumentsJson, null);
+        }
+
+        public static InputItem functionCallOutput(String callId, String output) {
+            return new InputItem(null, null, "function_call_output", callId, null, null, output);
         }
     }
 
-    public record ToolCall(
-            String id,
-            String type,
-            FunctionCall function
-    ) {}
-
-    public record FunctionCall(
-            String name,
-            String arguments  // JSON string — parsed later
-    ) {}
-
+    /**
+     * A tool definition sent to the API.
+     *
+     * <p>The Responses API uses a flat shape — name/description/parameters
+     * live directly on the tool, not nested under a "function" object.
+     */
     public record ToolDefinition(
             String type,
-            FunctionDefinition function
-    ) {}
-
-    public record FunctionDefinition(
             String name,
             String description,
             JsonNode parameters // JSON Schema
     ) {}
 
-    public record ChatCompletionRequest(
+    public record ResponsesRequest(
             String model,
-            List<Message> messages,
+            String instructions,
+            List<InputItem> input,
             List<ToolDefinition> tools,
             Boolean stream
     ) {}
 
-    public record ChatCompletionResponse(
+    public record ResponsesResponse(
             String id,
-            List<Choice> choices,
+            List<OutputItem> output,
+            @JsonProperty("output_text") String outputText,
             Usage usage
     ) {}
 
-    public record Choice(
-            int index,
-            Message message,
-            @JsonProperty("finish_reason") String finishReason
+    /**
+     * One item in the model's {@code output} array.
+     *
+     * <p>Common types: {@code message}, {@code function_call},
+     * {@code reasoning}, {@code web_search_call}.
+     */
+    public record OutputItem(
+            String type,
+            String id,
+            String status,
+
+            // For type == "message"
+            String role,
+            List<ContentPart> content,
+
+            // For type == "function_call"
+            @JsonProperty("call_id") String callId,
+            String name,
+            String arguments
+    ) {}
+
+    public record ContentPart(
+            String type, // e.g. "output_text"
+            String text
     ) {}
 
     public record Usage(
-            @JsonProperty("prompt_tokens") int promptTokens,
-            @JsonProperty("completion_tokens") int completionTokens,
+            @JsonProperty("input_tokens") int inputTokens,
+            @JsonProperty("output_tokens") int outputTokens,
             @JsonProperty("total_tokens") int totalTokens
     ) {}
 }
@@ -192,11 +235,12 @@ public final class Messages {
 
 A few Java-specific notes:
 
-- **`@JsonInclude(NON_NULL)` on the holder class** — Tells Jackson to omit null fields when serializing. The API doesn't expect `"tool_calls": null` on user messages.
+- **`@JsonInclude(NON_NULL)` on the holder class** — Tells Jackson to omit null fields when serializing. The API doesn't expect `"role": null` on a typed function_call item.
 - **Records are JSON-friendly** — Jackson's `databind` module understands records natively (since Jackson 2.12). No setters, no Lombok.
 - **`@JsonProperty` for snake_case** — Java field names are camelCase, the API uses snake_case. The annotation bridges them.
 - **`JsonNode` for parameters** — JSON Schema is dynamic. We could model it, but a raw `JsonNode` is simpler and lets each tool build its own schema however it likes.
-- **Static factory methods on `Message`** — Constructors with four nullable arguments are awful to call. The factories make message construction a one-liner.
+- **One `InputItem` record, two shapes** — Role-based messages and typed items share a record. Null fields and `@JsonInclude(NON_NULL)` keep the wire format clean. The alternative (a sealed interface with multiple subtypes plus a custom serializer) is more "type-safe" but a lot more code for the same effect.
+- **Static factory methods on `InputItem`** — Constructors with seven nullable arguments are awful to call. The factories make construction a one-liner.
 
 ## The HTTP Client
 
@@ -205,8 +249,8 @@ Create `OpenAiClient.java` in the same package:
 ```java
 package com.example.agents.api;
 
-import com.example.agents.api.Messages.ChatCompletionRequest;
-import com.example.agents.api.Messages.ChatCompletionResponse;
+import com.example.agents.api.Messages.ResponsesRequest;
+import com.example.agents.api.Messages.ResponsesResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 
@@ -217,7 +261,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 
 public final class OpenAiClient {
-    private static final URI API_URL = URI.create("https://api.openai.com/v1/chat/completions");
+    private static final URI API_URL = URI.create("https://api.openai.com/v1/responses");
 
     private final String apiKey;
     private final HttpClient http;
@@ -232,7 +276,7 @@ public final class OpenAiClient {
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 
-    public ChatCompletionResponse chatCompletion(ChatCompletionRequest req) throws Exception {
+    public ResponsesResponse createResponse(ResponsesRequest req) throws Exception {
         String body = mapper.writeValueAsString(req);
 
         HttpRequest httpReq = HttpRequest.newBuilder()
@@ -248,7 +292,7 @@ public final class OpenAiClient {
         if (resp.statusCode() >= 400) {
             throw new RuntimeException("OpenAI API error (" + resp.statusCode() + "): " + resp.body());
         }
-        return mapper.readValue(resp.body(), ChatCompletionResponse.class);
+        return mapper.readValue(resp.body(), ResponsesResponse.class);
     }
 
     public ObjectMapper mapper() {
@@ -285,7 +329,7 @@ public final class Prompts {
 }
 ```
 
-Java text blocks (`"""`) since Java 15 make multi-line strings actually pleasant.
+Java text blocks (`"""`) since Java 15 make multi-line strings actually pleasant. In the Responses API the system prompt is passed via the top-level `instructions` field, not as a message in the input array.
 
 ## Your First LLM Call
 
@@ -295,9 +339,9 @@ Now wire it together. Create `Main.java`:
 package com.example.agents;
 
 import com.example.agents.agent.Prompts;
-import com.example.agents.api.Messages.ChatCompletionRequest;
-import com.example.agents.api.Messages.ChatCompletionResponse;
-import com.example.agents.api.Messages.Message;
+import com.example.agents.api.Messages.InputItem;
+import com.example.agents.api.Messages.ResponsesRequest;
+import com.example.agents.api.Messages.ResponsesResponse;
 import com.example.agents.api.OpenAiClient;
 import io.github.cdimascio.dotenv.Dotenv;
 
@@ -314,21 +358,19 @@ public class Main {
 
         OpenAiClient client = new OpenAiClient(apiKey);
 
-        ChatCompletionRequest req = new ChatCompletionRequest(
-                "gpt-4.1-mini",
+        ResponsesRequest req = new ResponsesRequest(
+                "gpt-5-mini",
+                Prompts.SYSTEM,
                 List.of(
-                        Message.system(Prompts.SYSTEM),
-                        Message.user("What is an AI agent in one sentence?")
+                        InputItem.user("What is an AI agent in one sentence?")
                 ),
                 null,
                 null
         );
 
-        ChatCompletionResponse resp = client.chatCompletion(req);
+        ResponsesResponse resp = client.createResponse(req);
 
-        if (!resp.choices().isEmpty()) {
-            System.out.println(resp.choices().get(0).message().content());
-        }
+        System.out.println(resp.outputText());
     }
 }
 ```
@@ -353,11 +395,11 @@ That's a raw HTTP call to OpenAI, decoded into Java records. No SDK involved.
 Look at what's happening:
 
 1. `Dotenv` reads `.env` into a map (falling back to real environment variables)
-2. We construct a `ChatCompletionRequest` record literal
+2. We construct a `ResponsesRequest` record literal
 3. Jackson serializes it to JSON via the record's components
 4. `HttpClient.send` issues the HTTPS POST with our bearer token
-5. The response JSON is deserialized into `ChatCompletionResponse`
-6. We extract the first choice's message content
+5. The response JSON is deserialized into `ResponsesResponse`
+6. We print the convenience `output_text` field
 
 Every step is explicit. If the API changes its response format, Jackson will throw a clear error. If we send a malformed request, the API returns an error and we surface the response body.
 
@@ -366,7 +408,7 @@ Every step is explicit. If the API changes its response format, Jackson will thr
 In this chapter you:
 
 - Set up a Gradle project on Java 21 with minimal dependencies
-- Modeled the OpenAI API as records with Jackson annotations
+- Modeled the OpenAI Responses API as records with Jackson annotations
 - Built an HTTP client using only `java.net.http.HttpClient`
 - Made your first LLM call from raw HTTP
 

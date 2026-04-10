@@ -34,12 +34,13 @@ To keep the rendering loop simple, we wrap both agent events and UI events in on
 package com.example.agents.ui;
 
 import com.example.agents.agent.Events;
+import com.example.agents.agent.ToolCall;
 import com.googlecode.lanterna.input.KeyStroke;
 
 public sealed interface UiEvent {
     record Agent(Events event) implements UiEvent {}
     record Key(KeyStroke stroke) implements UiEvent {}
-    record ApprovalRequest(com.example.agents.api.Messages.ToolCall call,
+    record ApprovalRequest(ToolCall call,
                            java.util.concurrent.CompletableFuture<Boolean> response) implements UiEvent {}
 }
 ```
@@ -98,9 +99,8 @@ package com.example.agents.ui;
 
 import com.example.agents.agent.Agent;
 import com.example.agents.agent.Events;
-import com.example.agents.agent.Prompts;
-import com.example.agents.api.Messages.Message;
-import com.example.agents.api.Messages.ToolCall;
+import com.example.agents.agent.ToolCall;
+import com.example.agents.api.Messages.InputItem;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.TextCharacter;
 import com.googlecode.lanterna.TextColor;
@@ -120,7 +120,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 public final class TerminalApp {
     private final Agent agent;
     private final Transcript transcript = new Transcript();
-    private final List<Message> history = new ArrayList<>();
+    private final List<InputItem> history = new ArrayList<>();
     private final BlockingQueue<UiEvent> uiQueue = new LinkedBlockingQueue<>();
 
     private StringBuilder input = new StringBuilder();
@@ -129,7 +129,6 @@ public final class TerminalApp {
 
     public TerminalApp(Agent agent) {
         this.agent = agent;
-        history.add(Message.system(Prompts.SYSTEM));
     }
 ```
 
@@ -229,7 +228,7 @@ A few things to call out:
         if (text.isEmpty()) return;
         input.setLength(0);
         transcript.addUser(text);
-        history.add(Message.user(text));
+        history.add(InputItem.user(text));
         busy = true;
 
         // Kick off the agent on a virtual thread, push its events into uiQueue.
@@ -259,7 +258,7 @@ A few things to call out:
         switch (ev) {
             case Events.TextDelta t -> transcript.appendStreaming(t.text());
             case Events.ToolCallEvent c -> transcript.addToolCall(
-                    c.call().function().name() + "(" + c.call().function().arguments() + ")");
+                    c.call().name() + "(" + c.call().arguments() + ")");
             case Events.ToolResult r -> {
                 String preview = r.result();
                 if (preview.length() > 200) preview = preview.substring(0, 200) + "...";
@@ -308,8 +307,8 @@ One queue, one render thread, three producers. The discipline is that **only the
         }
 
         if (pending != null) {
-            String prompt = "Approve " + pending.call().function().name()
-                    + "(" + pending.call().function().arguments() + ")? [y/N]";
+            String prompt = "Approve " + pending.call().name()
+                    + "(" + pending.call().arguments() + ")? [y/N]";
             putString(screen, 0, height - 3, prompt, TextColor.ANSI.YELLOW);
         }
 

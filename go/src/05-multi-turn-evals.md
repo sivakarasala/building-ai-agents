@@ -56,12 +56,10 @@ func (m *MockTool) RequiresApproval() bool   { return false }
 
 func (m *MockTool) Definition() api.ToolDefinition {
     return api.ToolDefinition{
-        Type: "function",
-        Function: api.FunctionDefinition{
-            Name:        m.name,
-            Description: m.description,
-            Parameters:  m.parameters,
-        },
+        Type:        "function",
+        Name:        m.name,
+        Description: m.description,
+        Parameters:  m.parameters,
     }
 }
 
@@ -143,13 +141,12 @@ func RunMultiTurn(ctx context.Context, client *api.Client, c MultiTurnCase) (Mul
     }
 
     a := agent.NewAgent(client, registry)
-    messages := []api.Message{
-        api.NewSystemMessage(agent.SystemPrompt),
+    history := []api.InputItem{
         api.NewUserMessage(c.UserMessage),
     }
 
     var finalText strings.Builder
-    for ev := range a.Run(ctx, messages) {
+    for ev := range a.Run(ctx, history) {
         switch ev.Kind {
         case agent.EventTextDelta:
             finalText.WriteString(ev.Text)
@@ -219,20 +216,17 @@ func Judge(ctx context.Context, client *api.Client, c MultiTurnCase, r MultiTurn
         c.UserMessage, c.Rubric, r.FinalText, callsBlock,
     )
 
-    req := api.ChatCompletionRequest{
-        Model: "gpt-4.1-mini",
-        Messages: []api.Message{
-            api.NewSystemMessage(judgeSystemPrompt),
+    req := api.ResponsesRequest{
+        Model:        "gpt-5-mini",
+        Instructions: judgeSystemPrompt,
+        Input: []api.InputItem{
             api.NewUserMessage(userPrompt),
         },
     }
 
-    resp, err := client.ChatCompletion(ctx, req)
+    resp, err := client.CreateResponse(ctx, req)
     if err != nil {
         return r, fmt.Errorf("judge call: %w", err)
-    }
-    if len(resp.Choices) == 0 {
-        return r, fmt.Errorf("judge returned no choices")
     }
 
     var verdict struct {
@@ -240,7 +234,7 @@ func Judge(ctx context.Context, client *api.Client, c MultiTurnCase, r MultiTurn
         Score  float64 `json:"score"`
         Reason string  `json:"reason"`
     }
-    raw := strings.TrimSpace(resp.Choices[0].Message.Content)
+    raw := strings.TrimSpace(resp.OutputText)
     // Strip ```json fences if the model added them.
     raw = strings.TrimPrefix(raw, "```json")
     raw = strings.TrimPrefix(raw, "```")

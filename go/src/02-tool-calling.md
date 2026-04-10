@@ -116,21 +116,19 @@ func (ReadFile) RequiresApproval() bool { return false }
 
 func (ReadFile) Definition() api.ToolDefinition {
     return api.ToolDefinition{
-        Type: "function",
-        Function: api.FunctionDefinition{
-            Name:        "read_file",
-            Description: "Read the contents of a file at the specified path. Use this to examine file contents.",
-            Parameters: json.RawMessage(`{
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "The path to the file to read"
-                    }
-                },
-                "required": ["path"]
-            }`),
-        },
+        Type:        "function",
+        Name:        "read_file",
+        Description: "Read the contents of a file at the specified path. Use this to examine file contents.",
+        Parameters: json.RawMessage(`{
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "The path to the file to read"
+                }
+            },
+            "required": ["path"]
+        }`),
     }
 }
 
@@ -165,21 +163,19 @@ func (ListFiles) RequiresApproval() bool { return false }
 
 func (ListFiles) Definition() api.ToolDefinition {
     return api.ToolDefinition{
-        Type: "function",
-        Function: api.FunctionDefinition{
-            Name:        "list_files",
-            Description: "List all files and directories in the specified directory path.",
-            Parameters: json.RawMessage(`{
-                "type": "object",
-                "properties": {
-                    "directory": {
-                        "type": "string",
-                        "description": "The directory path to list contents of",
-                        "default": "."
-                    }
+        Type:        "function",
+        Name:        "list_files",
+        Description: "List all files and directories in the specified directory path.",
+        Parameters: json.RawMessage(`{
+            "type": "object",
+            "properties": {
+                "directory": {
+                    "type": "string",
+                    "description": "The directory path to list contents of",
+                    "default": "."
                 }
-            }`),
-        },
+            }
+        }`),
     }
 }
 
@@ -294,36 +290,35 @@ func main() {
     registry.Register(tools.ReadFile{})
     registry.Register(tools.ListFiles{})
 
-    req := api.ChatCompletionRequest{
-        Model: "gpt-4.1-mini",
-        Messages: []api.Message{
-            api.NewSystemMessage(agent.SystemPrompt),
+    req := api.ResponsesRequest{
+        Model:        "gpt-5-mini",
+        Instructions: agent.SystemPrompt,
+        Input: []api.InputItem{
             api.NewUserMessage("What files are in the current directory?"),
         },
         Tools: registry.Definitions(),
     }
 
-    resp, err := client.ChatCompletion(context.Background(), req)
+    resp, err := client.CreateResponse(context.Background(), req)
     if err != nil {
-        log.Fatalf("chat completion: %v", err)
+        log.Fatalf("create response: %v", err)
     }
 
-    if len(resp.Choices) == 0 {
-        log.Fatal("no choices in response")
-    }
-    msg := resp.Choices[0].Message
-
-    if msg.Content != "" {
-        fmt.Println("Text:", msg.Content)
+    if resp.OutputText != "" {
+        fmt.Println("Text:", resp.OutputText)
     }
 
-    for _, tc := range msg.ToolCalls {
-        fmt.Printf("Tool call: %s(%s)\n", tc.Function.Name, tc.Function.Arguments)
+    // Walk the output items looking for function calls.
+    for _, item := range resp.Output {
+        if item.Type != "function_call" {
+            continue
+        }
+        fmt.Printf("Tool call: %s(%s)\n", item.Name, item.Arguments)
 
         // Actually execute the tool
-        result, err := registry.Execute(tc.Function.Name, json.RawMessage(tc.Function.Arguments))
+        result, err := registry.Execute(item.Name, json.RawMessage(item.Arguments))
         if err != nil {
-            log.Printf("execute %s: %v", tc.Function.Name, err)
+            log.Printf("execute %s: %v", item.Name, err)
             continue
         }
 

@@ -90,7 +90,6 @@ Create `tools/ReadFile.java`:
 package com.example.agents.tools;
 
 import com.example.agents.agent.Tool;
-import com.example.agents.api.Messages.FunctionDefinition;
 import com.example.agents.api.Messages.ToolDefinition;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -115,11 +114,12 @@ public record ReadFile(ObjectMapper mapper) implements Tool {
                 ),
                 "required", java.util.List.of("path")
         ));
-        return new ToolDefinition("function", new FunctionDefinition(
+        return new ToolDefinition(
+                "function",
                 "read_file",
                 "Read the contents of a file at the specified path. Use this to examine file contents.",
                 params
-        ));
+        );
     }
 
     @Override
@@ -146,7 +146,6 @@ Create `tools/ListFiles.java`:
 package com.example.agents.tools;
 
 import com.example.agents.agent.Tool;
-import com.example.agents.api.Messages.FunctionDefinition;
 import com.example.agents.api.Messages.ToolDefinition;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -175,11 +174,12 @@ public record ListFiles(ObjectMapper mapper) implements Tool {
                         )
                 )
         ));
-        return new ToolDefinition("function", new FunctionDefinition(
+        return new ToolDefinition(
+                "function",
                 "list_files",
                 "List all files and directories in the specified directory path.",
                 params
-        ));
+        );
     }
 
     @Override
@@ -246,10 +246,10 @@ package com.example.agents;
 
 import com.example.agents.agent.Prompts;
 import com.example.agents.agent.Registry;
-import com.example.agents.api.Messages.ChatCompletionRequest;
-import com.example.agents.api.Messages.ChatCompletionResponse;
-import com.example.agents.api.Messages.Message;
-import com.example.agents.api.Messages.ToolCall;
+import com.example.agents.api.Messages.InputItem;
+import com.example.agents.api.Messages.OutputItem;
+import com.example.agents.api.Messages.ResponsesRequest;
+import com.example.agents.api.Messages.ResponsesResponse;
 import com.example.agents.api.OpenAiClient;
 import com.example.agents.tools.ListFiles;
 import com.example.agents.tools.ReadFile;
@@ -272,37 +272,30 @@ public class Main {
         registry.register(new ReadFile(client.mapper()));
         registry.register(new ListFiles(client.mapper()));
 
-        ChatCompletionRequest req = new ChatCompletionRequest(
-                "gpt-4.1-mini",
-                List.of(
-                        Message.system(Prompts.SYSTEM),
-                        Message.user("What files are in the current directory?")
-                ),
+        ResponsesRequest req = new ResponsesRequest(
+                "gpt-5-mini",
+                Prompts.SYSTEM,
+                List.of(InputItem.user("What files are in the current directory?")),
                 registry.definitions(),
                 null
         );
 
-        ChatCompletionResponse resp = client.chatCompletion(req);
+        ResponsesResponse resp = client.createResponse(req);
 
-        if (resp.choices().isEmpty()) {
-            System.err.println("no choices in response");
-            return;
-        }
-        Message msg = resp.choices().get(0).message();
-
-        if (msg.content() != null && !msg.content().isEmpty()) {
-            System.out.println("Text: " + msg.content());
+        if (resp.outputText() != null && !resp.outputText().isEmpty()) {
+            System.out.println("Text: " + resp.outputText());
         }
 
-        if (msg.toolCalls() != null) {
-            for (ToolCall tc : msg.toolCalls()) {
-                System.out.println("Tool call: " + tc.function().name() + "(" + tc.function().arguments() + ")");
-                String result = registry.execute(tc.function().name(), tc.function().arguments());
-                if (result.length() > 200) {
-                    result = result.substring(0, 200) + "...";
-                }
-                System.out.println("Result: " + result);
+        for (OutputItem item : resp.output()) {
+            if (!"function_call".equals(item.type())) {
+                continue;
             }
+            System.out.println("Tool call: " + item.name() + "(" + item.arguments() + ")");
+            String result = registry.execute(item.name(), item.arguments());
+            if (result.length() > 200) {
+                result = result.substring(0, 200) + "...";
+            }
+            System.out.println("Result: " + result);
         }
     }
 }

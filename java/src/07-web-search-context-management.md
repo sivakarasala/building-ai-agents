@@ -25,7 +25,6 @@ Create `tools/WebSearch.java`:
 package com.example.agents.tools;
 
 import com.example.agents.agent.Tool;
-import com.example.agents.api.Messages.FunctionDefinition;
 import com.example.agents.api.Messages.ToolDefinition;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -64,11 +63,12 @@ public final class WebSearch implements Tool {
                 ),
                 "required", List.of("query")
         ));
-        return new ToolDefinition("function", new FunctionDefinition(
+        return new ToolDefinition(
+                "function",
                 "web_search",
                 "Search the web for current information. Returns a summarized answer plus the top result snippets. Use this when you need information beyond your training data.",
                 params
-        ));
+        );
     }
 
     @Override
@@ -156,7 +156,7 @@ Create `context/Tokens.java`:
 ```java
 package com.example.agents.context;
 
-import com.example.agents.api.Messages.Message;
+import com.example.agents.api.Messages.InputItem;
 
 import java.util.List;
 
@@ -169,19 +169,15 @@ public final class Tokens {
         return (s.length() + 3) / 4;
     }
 
-    /** Rough total token count for a list of messages. */
-    public static int estimateMessages(List<Message> messages) {
+    /** Rough total token count for a list of input items. */
+    public static int estimateMessages(List<InputItem> items) {
         int total = 0;
-        for (Message m : messages) {
-            total += 4; // role + framing
+        for (InputItem m : items) {
+            total += 4; // role/type framing
             total += estimate(m.content());
-            if (m.toolCalls() != null) {
-                for (var tc : m.toolCalls()) {
-                    total += 4;
-                    total += estimate(tc.function().name());
-                    total += estimate(tc.function().arguments());
-                }
-            }
+            total += estimate(m.name());
+            total += estimate(m.arguments());
+            total += estimate(m.output());
         }
         return total;
     }
@@ -194,18 +190,20 @@ Yes, this is wildly approximate. It's also fast, allocation-light, and good enou
 
 Compaction works in three steps:
 
-1. Decide which messages are "old" enough to summarize. Always keep the system prompt, the most recent user message, and the assistant turns that respond to it.
-2. Send the old messages to the model with a "summarize this" prompt.
-3. Replace the old messages with one new message: `system` role, content = summary.
+1. Decide which input items are "old" enough to summarize. Always keep the most recent user message and the assistant turns that respond to it.
+2. Send the old items to the model with a "summarize this" prompt.
+3. Replace the old items with a single user-role item containing the summary.
+
+Note that the system prompt isn't part of the `input` list — it lives in the top-level `instructions` field of the request, so we never have to worry about preserving it during compaction.
 
 Create `context/Compact.java`:
 
 ```java
 package com.example.agents.context;
 
-import com.example.agents.api.Messages.ChatCompletionRequest;
-import com.example.agents.api.Messages.ChatCompletionResponse;
-import com.example.agents.api.Messages.Message;
+import com.example.agents.api.Messages.InputItem;
+import com.example.agents.api.Messages.ResponsesRequest;
+import com.example.agents.api.Messages.ResponsesResponse;
 import com.example.agents.api.OpenAiClient;
 
 import java.util.ArrayList;
@@ -230,69 +228,59 @@ public final class Compact {
             """;
 
     /**
-     * Compacts the message history if its estimated token count exceeds maxTokens.
-     * Always keeps the system prompt and the trailing KEEP_RECENT messages.
+     * Compacts the input history if its estimated token count exceeds maxTokens.
+     * Always keeps the trailing KEEP_RECENT items verbatim. The top-level
+     * `instructions` (system prompt) is not part of the input, so it's untouched.
      */
-    public static List<Message> maybeCompact(OpenAiClient client, List<Message> messages, int maxTokens) throws Exception {
+    public static List<InputItem> maybeCompact(OpenAiClient client, List<InputItem> input, int maxTokens) throws Exception {
         if (maxTokens <= 0) maxTokens = DEFAULT_MAX_TOKENS;
-        if (Tokens.estimateMessages(messages) < maxTokens) return messages;
-        if (messages.size() <= KEEP_RECENT + 1) return messages;
+        if (Tokens.estimateMessages(input) < maxTokens) return input;
+        if (input.size() <= KEEP_RECENT + 1) return input;
 
-        Message systemMsg = null;
-        int start = 0;
-        if (!messages.isEmpty() && "system".equals(messages.get(0).role())) {
-            systemMsg = messages.get(0);
-            start = 1;
-        }
-
-        int cutoff = messages.size() - KEEP_RECENT;
-        if (cutoff <= start) return messages;
-
-        List<Message> toSummarize = messages.subList(start, cutoff);
-        List<Message> keep = messages.subList(cutoff, messages.size());
+        int cutoff = input.size() - KEEP_RECENT;
+        List<InputItem> toSummarize = input.subList(0, cutoff);
+        List<InputItem> keep = input.subList(cutoff, input.size());
 
         String summary = summarize(client, toSummarize);
 
-        List<Message> out = new ArrayList<>(2 + keep.size());
-        if (systemMsg != null) out.add(systemMsg);
-        out.add(Message.system("Summary of earlier conversation:\n" + summary));
+        List<InputItem> out = new ArrayList<>(1 + keep.size());
+        out.add(InputItem.user("Summary of earlier conversation:\n" + summary));
         out.addAll(keep);
         return out;
     }
 
-    private static String summarize(OpenAiClient client, List<Message> messages) throws Exception {
+    private static String summarize(OpenAiClient client, List<InputItem> items) throws Exception {
         StringBuilder transcript = new StringBuilder();
-        for (Message m : messages) {
-            transcript.append('[').append(m.role()).append("] ")
-                      .append(m.content() == null ? "" : m.content()).append('\n');
-            if (m.toolCalls() != null) {
-                for (var tc : m.toolCalls()) {
-                    transcript.append("  tool_call: ").append(tc.function().name())
-                              .append('(').append(tc.function().arguments()).append(")\n");
-                }
+        for (InputItem m : items) {
+            if ("function_call".equals(m.type())) {
+                transcript.append("[tool_call] ").append(m.name())
+                          .append('(').append(m.arguments() == null ? "" : m.arguments()).append(")\n");
+            } else if ("function_call_output".equals(m.type())) {
+                transcript.append("[tool_result] ").append(m.output() == null ? "" : m.output()).append('\n');
+            } else {
+                transcript.append('[').append(m.role()).append("] ")
+                          .append(m.content() == null ? "" : m.content()).append('\n');
             }
         }
 
-        ChatCompletionRequest req = new ChatCompletionRequest(
-                "gpt-4.1-mini",
-                List.of(Message.system(COMPACT_SYSTEM), Message.user(transcript.toString())),
+        ResponsesRequest req = new ResponsesRequest(
+                "gpt-5-mini",
+                COMPACT_SYSTEM,
+                List.of(InputItem.user(transcript.toString())),
                 null,
                 null
         );
-        ChatCompletionResponse resp = client.chatCompletion(req);
-        if (resp.choices().isEmpty()) {
-            throw new RuntimeException("compact summary returned no choices");
-        }
-        return resp.choices().get(0).message().content();
+        ResponsesResponse resp = client.createResponse(req);
+        return resp.outputText() == null ? "" : resp.outputText();
     }
 }
 ```
 
 The key invariants:
 
-- **System prompt is sacred.** We never summarize it — the model needs the original instructions verbatim to keep behaving correctly.
+- **System prompt is untouched.** It lives in the top-level `instructions` field, not in the `input` list, so compaction never sees it.
 - **Recent turns are preserved verbatim.** The assistant just decided to call a tool; if we summarized that out, the next loop iteration would reach for the wrong context.
-- **The summary becomes a new system message.** Marking it as `system` makes it clear the model didn't say this — it's metadata about what *did* happen.
+- **The summary becomes a new user-role item.** A user-framed summary reads as "here's what happened" without claiming the model said it.
 
 ## Wiring Compaction Into the Loop
 
@@ -302,19 +290,19 @@ Update `Agent.java`. At the top of the `while (true)` loop in the virtual thread
 import com.example.agents.context.Compact;
 
 // inside the while loop, before constructing req:
-history = new ArrayList<>(Compact.maybeCompact(client, history, Compact.DEFAULT_MAX_TOKENS));
+input = new ArrayList<>(Compact.maybeCompact(client, input, Compact.DEFAULT_MAX_TOKENS));
 ```
 
 The `new ArrayList<>` wrap is defensive: `subList` returns a view backed by the original, and we want to be sure we own the list we're appending to.
 
-That's the whole integration. Compaction is invisible to the rest of the loop: a step that occasionally rewrites `history` between turns.
+That's the whole integration. Compaction is invisible to the rest of the loop: a step that occasionally rewrites `input` between turns.
 
 ## Trying It Out
 
 You don't easily hit the compaction threshold by hand, but you can lower it temporarily to watch it fire:
 
 ```java
-history = new ArrayList<>(Compact.maybeCompact(client, history, 2000));
+input = new ArrayList<>(Compact.maybeCompact(client, input, 2000));
 ```
 
 Now run a session that reads a couple of files. After the second or third turn the agent will continue working as if nothing happened — but if you log `history.size()` before and after the call, you'll see it shrink.

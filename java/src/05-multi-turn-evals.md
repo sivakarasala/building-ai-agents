@@ -32,7 +32,6 @@ Then create `eval/MockTool.java`:
 package com.example.agents.eval;
 
 import com.example.agents.agent.Tool;
-import com.example.agents.api.Messages.FunctionDefinition;
 import com.example.agents.api.Messages.ToolDefinition;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -68,7 +67,7 @@ public final class MockTool implements Tool {
                 "properties", Map.of(),
                 "additionalProperties", true
         ));
-        return new ToolDefinition("function", new FunctionDefinition(name, description, params));
+        return new ToolDefinition("function", name, description, params);
     }
 
     @Override
@@ -121,8 +120,7 @@ Add to `eval/Runner.java`:
 ```java
 import com.example.agents.agent.Agent;
 import com.example.agents.agent.Events;
-import com.example.agents.agent.Prompts;
-import com.example.agents.api.Messages.Message;
+import com.example.agents.api.Messages.InputItem;
 import com.example.agents.eval.Cases.MultiTurnCase;
 import com.example.agents.eval.Cases.MultiTurnResult;
 
@@ -141,8 +139,7 @@ public static MultiTurnResult runMultiTurn(OpenAiClient client, MultiTurnCase c)
 
     Agent agent = new Agent(client, registry);
     BlockingQueue<Events> events = agent.run(List.of(
-            Message.system(Prompts.SYSTEM),
-            Message.user(c.userMessage())
+            InputItem.user(c.userMessage())
     ));
 
     StringBuilder finalText = new StringBuilder();
@@ -175,9 +172,9 @@ Create `eval/Judge.java`:
 ```java
 package com.example.agents.eval;
 
-import com.example.agents.api.Messages.ChatCompletionRequest;
-import com.example.agents.api.Messages.ChatCompletionResponse;
-import com.example.agents.api.Messages.Message;
+import com.example.agents.api.Messages.InputItem;
+import com.example.agents.api.Messages.ResponsesRequest;
+import com.example.agents.api.Messages.ResponsesResponse;
 import com.example.agents.api.OpenAiClient;
 import com.example.agents.eval.Cases.MultiTurnCase;
 import com.example.agents.eval.Cases.MultiTurnResult;
@@ -225,22 +222,16 @@ public final class Judge {
                 %s
                 """.formatted(c.userMessage(), c.rubric(), r.finalText(), callsBlock);
 
-        ChatCompletionRequest req = new ChatCompletionRequest(
-                "gpt-4.1-mini",
-                List.of(
-                        Message.system(JUDGE_SYSTEM),
-                        Message.user(prompt)
-                ),
+        ResponsesRequest req = new ResponsesRequest(
+                "gpt-5-mini",
+                JUDGE_SYSTEM,
+                List.of(InputItem.user(prompt)),
                 null,
                 null
         );
 
-        ChatCompletionResponse resp = client.chatCompletion(req);
-        if (resp.choices().isEmpty()) {
-            throw new RuntimeException("judge returned no choices");
-        }
-
-        String raw = resp.choices().get(0).message().content().strip();
+        ResponsesResponse resp = client.createResponse(req);
+        String raw = resp.outputText() == null ? "" : resp.outputText().strip();
         // Strip ```json fences if the model added them.
         if (raw.startsWith("```")) {
             int firstNewline = raw.indexOf('\n');

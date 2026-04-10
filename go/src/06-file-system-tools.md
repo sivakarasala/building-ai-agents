@@ -28,19 +28,17 @@ func (WriteFile) RequiresApproval() bool { return true }
 
 func (WriteFile) Definition() api.ToolDefinition {
     return api.ToolDefinition{
-        Type: "function",
-        Function: api.FunctionDefinition{
-            Name:        "write_file",
-            Description: "Write content to a file at the specified path. Creates the file if it doesn't exist, overwrites it if it does. Parent directories are created as needed.",
-            Parameters: json.RawMessage(`{
-                "type": "object",
-                "properties": {
-                    "path":    {"type": "string", "description": "The path of the file to write"},
-                    "content": {"type": "string", "description": "The content to write to the file"}
-                },
-                "required": ["path", "content"]
-            }`),
-        },
+        Type:        "function",
+        Name:        "write_file",
+        Description: "Write content to a file at the specified path. Creates the file if it doesn't exist, overwrites it if it does. Parent directories are created as needed.",
+        Parameters: json.RawMessage(`{
+            "type": "object",
+            "properties": {
+                "path":    {"type": "string", "description": "The path of the file to write"},
+                "content": {"type": "string", "description": "The content to write to the file"}
+            },
+            "required": ["path", "content"]
+        }`),
     }
 }
 
@@ -91,20 +89,18 @@ func (EditFile) RequiresApproval() bool { return true }
 
 func (EditFile) Definition() api.ToolDefinition {
     return api.ToolDefinition{
-        Type: "function",
-        Function: api.FunctionDefinition{
-            Name:        "edit_file",
-            Description: "Replace an exact substring in a file with new content. The old_string must appear exactly once in the file.",
-            Parameters: json.RawMessage(`{
-                "type": "object",
-                "properties": {
-                    "path":       {"type": "string", "description": "The path to the file to edit"},
-                    "old_string": {"type": "string", "description": "The exact text to find. Must match exactly once."},
-                    "new_string": {"type": "string", "description": "The text to replace it with"}
-                },
-                "required": ["path", "old_string", "new_string"]
-            }`),
-        },
+        Type:        "function",
+        Name:        "edit_file",
+        Description: "Replace an exact substring in a file with new content. The old_string must appear exactly once in the file.",
+        Parameters: json.RawMessage(`{
+            "type": "object",
+            "properties": {
+                "path":       {"type": "string", "description": "The path to the file to edit"},
+                "old_string": {"type": "string", "description": "The exact text to find. Must match exactly once."},
+                "new_string": {"type": "string", "description": "The text to replace it with"}
+            },
+            "required": ["path", "old_string", "new_string"]
+        }`),
     }
 }
 
@@ -165,18 +161,16 @@ func (DeleteFile) RequiresApproval() bool { return true }
 
 func (DeleteFile) Definition() api.ToolDefinition {
     return api.ToolDefinition{
-        Type: "function",
-        Function: api.FunctionDefinition{
-            Name:        "delete_file",
-            Description: "Delete a file at the specified path. Use with care — this is not reversible.",
-            Parameters: json.RawMessage(`{
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "The path of the file to delete"}
-                },
-                "required": ["path"]
-            }`),
-        },
+        Type:        "function",
+        Name:        "delete_file",
+        Description: "Delete a file at the specified path. Use with care — this is not reversible.",
+        Parameters: json.RawMessage(`{
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "The path of the file to delete"}
+            },
+            "required": ["path"]
+        }`),
     }
 }
 

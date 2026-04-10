@@ -20,7 +20,6 @@ Create `tools/WriteFile.java`:
 package com.example.agents.tools;
 
 import com.example.agents.agent.Tool;
-import com.example.agents.api.Messages.FunctionDefinition;
 import com.example.agents.api.Messages.ToolDefinition;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -47,11 +46,12 @@ public record WriteFile(ObjectMapper mapper) implements Tool {
                 ),
                 "required", List.of("path", "content")
         ));
-        return new ToolDefinition("function", new FunctionDefinition(
+        return new ToolDefinition(
+                "function",
                 "write_file",
                 "Write content to a file at the specified path. Creates the file if it doesn't exist, overwrites it if it does. Parent directories are created as needed.",
                 params
-        ));
+        );
     }
 
     @Override
@@ -90,7 +90,6 @@ Create `tools/EditFile.java`:
 package com.example.agents.tools;
 
 import com.example.agents.agent.Tool;
-import com.example.agents.api.Messages.FunctionDefinition;
 import com.example.agents.api.Messages.ToolDefinition;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -117,11 +116,12 @@ public record EditFile(ObjectMapper mapper) implements Tool {
                 ),
                 "required", List.of("path", "old_string", "new_string")
         ));
-        return new ToolDefinition("function", new FunctionDefinition(
+        return new ToolDefinition(
+                "function",
                 "edit_file",
                 "Replace an exact substring in a file with new content. The old_string must appear exactly once in the file.",
                 params
-        ));
+        );
     }
 
     @Override
@@ -180,7 +180,6 @@ Create `tools/DeleteFile.java`:
 package com.example.agents.tools;
 
 import com.example.agents.agent.Tool;
-import com.example.agents.api.Messages.FunctionDefinition;
 import com.example.agents.api.Messages.ToolDefinition;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -205,11 +204,12 @@ public record DeleteFile(ObjectMapper mapper) implements Tool {
                 ),
                 "required", List.of("path")
         ));
-        return new ToolDefinition("function", new FunctionDefinition(
+        return new ToolDefinition(
+                "function",
                 "delete_file",
                 "Delete a file at the specified path. Use with care — this is not reversible.",
                 params
-        ));
+        );
     }
 
     @Override
@@ -255,7 +255,7 @@ registry.register(new DeleteFile(mapper));
 Try a prompt that exercises all of them:
 
 ```java
-Message.user("Create a file hello.txt containing 'Hello, world!', then change 'world' to 'Java', then read the file back to confirm.")
+InputItem.user("Create a file hello.txt containing 'Hello, world!', then change 'world' to 'Java', then read the file back to confirm.")
 ```
 
 Expected output (approval prompts skipped for now since we're passing the default `call -> true` predicate to `Agent.run`):

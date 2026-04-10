@@ -127,9 +127,10 @@ package com.example.agents.eval;
 
 import com.example.agents.agent.Prompts;
 import com.example.agents.agent.Registry;
-import com.example.agents.api.Messages.ChatCompletionRequest;
-import com.example.agents.api.Messages.ChatCompletionResponse;
-import com.example.agents.api.Messages.Message;
+import com.example.agents.api.Messages.InputItem;
+import com.example.agents.api.Messages.OutputItem;
+import com.example.agents.api.Messages.ResponsesRequest;
+import com.example.agents.api.Messages.ResponsesResponse;
 import com.example.agents.api.OpenAiClient;
 
 import java.util.List;
@@ -142,22 +143,21 @@ public final class Runner {
      * or null if no tool was called.
      */
     public static String runSingleTurn(OpenAiClient client, Registry registry, String input) throws Exception {
-        ChatCompletionRequest req = new ChatCompletionRequest(
-                "gpt-4.1-mini",
-                List.of(
-                        Message.system(Prompts.SYSTEM),
-                        Message.user(input)
-                ),
+        ResponsesRequest req = new ResponsesRequest(
+                "gpt-5-mini",
+                Prompts.SYSTEM,
+                List.of(InputItem.user(input)),
                 registry.definitions(),
                 null
         );
 
-        ChatCompletionResponse resp = client.chatCompletion(req);
-        if (resp.choices().isEmpty()) return null;
-
-        var msg = resp.choices().get(0).message();
-        if (msg.toolCalls() == null || msg.toolCalls().isEmpty()) return null;
-        return msg.toolCalls().get(0).function().name();
+        ResponsesResponse resp = client.createResponse(req);
+        for (OutputItem item : resp.output()) {
+            if ("function_call".equals(item.type())) {
+                return item.name();
+            }
+        }
+        return null;
     }
 }
 ```

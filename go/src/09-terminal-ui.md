@@ -90,14 +90,14 @@ type line struct {
 
 // pendingApproval holds a tool call that needs user confirmation.
 type pendingApproval struct {
-    call api.ToolCall
+    call agent.ToolCall
     resp chan bool
 }
 
 // Model is the Bubble Tea application state.
 type Model struct {
     agent    *agent.Agent
-    history  []api.Message
+    history  []api.InputItem
     lines    []line
     input    textinput.Model
     streaming strings.Builder
@@ -110,8 +110,10 @@ type Model struct {
     quit bool
 }
 
-// NewModel constructs the UI model.
-func NewModel(a *agent.Agent, system string) Model {
+// NewModel constructs the UI model. The system prompt is held by the agent
+// itself (via the Responses API `instructions` field), so the UI only tracks
+// the input array.
+func NewModel(a *agent.Agent) Model {
     ti := textinput.New()
     ti.Placeholder = "Ask the agent something..."
     ti.Focus()
@@ -120,7 +122,6 @@ func NewModel(a *agent.Agent, system string) Model {
 
     return Model{
         agent:    a,
-        history:  []api.Message{api.NewSystemMessage(system)},
         input:    ti,
         approval: make(chan pendingApproval),
     }
@@ -180,37 +181,37 @@ The agent loop in Chapter 4 ran every tool unconditionally. We need to teach it 
 // tool whose RequiresApproval returns true.
 func (a *Agent) RunWithApproval(
     ctx context.Context,
-    messages []api.Message,
-    askApproval func(api.ToolCall) bool,
+    history []api.InputItem,
+    askApproval func(ToolCall) bool,
 ) <-chan Event {
     events := make(chan Event)
 
     go func() {
         defer close(events)
-        history := append([]api.Message(nil), messages...)
+        input := append([]api.InputItem(nil), history...)
 
         for {
             // ... same compaction + streaming code as Run ...
-            // After accumulating tool calls:
+            // After collecting toolCalls from response.completed:
 
             for _, tc := range toolCalls {
                 events <- Event{Kind: EventToolCall, ToolCall: tc}
 
-                if a.registry.RequiresApproval(tc.Function.Name) {
+                if a.registry.RequiresApproval(tc.Name) {
                     if !askApproval(tc) {
                         result := "User denied this tool call."
                         events <- Event{Kind: EventToolResult, ToolCall: tc, Result: result}
-                        history = append(history, api.NewToolResultMessage(tc.ID, result))
+                        input = append(input, api.NewFunctionCallOutput(tc.CallID, result))
                         continue
                     }
                 }
 
-                result, err := a.registry.Execute(tc.Function.Name, json.RawMessage(tc.Function.Arguments))
+                result, err := a.registry.Execute(tc.Name, json.RawMessage(tc.Arguments))
                 if err != nil {
                     result = fmt.Sprintf("Error: %v", err)
                 }
                 events <- Event{Kind: EventToolResult, ToolCall: tc, Result: result}
-                history = append(history, api.NewToolResultMessage(tc.ID, result))
+                input = append(input, api.NewFunctionCallOutput(tc.CallID, result))
             }
         }
     }()
@@ -280,6 +281,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
         m.lines = append(m.lines, line{kind: lineUser, text: text})
         m.history = append(m.history, api.NewUserMessage(text))
         m.busy = true
+        // Note: m.history is the []api.InputItem accumulated across turns.
 
         ctx := context.Background()
         m.events = m.agent.RunWithApproval(ctx, m.history, m.askApproval)
@@ -302,7 +304,7 @@ func (m Model) handleAgentEvent(ev agent.Event) (tea.Model, tea.Cmd) {
         }
         m.lines = append(m.lines, line{
             kind: lineToolCall,
-            text: fmt.Sprintf("%s(%s)", ev.ToolCall.Function.Name, ev.ToolCall.Function.Arguments),
+            text: fmt.Sprintf("%s(%s)", ev.ToolCall.Name, ev.ToolCall.Arguments),
         })
     case agent.EventToolResult:
         preview := ev.Result
@@ -327,7 +329,7 @@ func (m Model) handleAgentEvent(ev agent.Event) (tea.Model, tea.Cmd) {
 
 // askApproval is the callback the agent loop calls when a destructive tool
 // fires. It blocks until the UI decides.
-func (m *Model) askApproval(tc api.ToolCall) bool {
+func (m *Model) askApproval(tc agent.ToolCall) bool {
     resp := make(chan bool, 1)
     m.approval <- pendingApproval{call: tc, resp: resp}
     return <-resp
@@ -368,8 +370,8 @@ func (m Model) View() string {
     if m.pending != nil {
         sb.WriteString(approvalStyle.Render(fmt.Sprintf(
             "Approve %s(%s)? [y/N]",
-            m.pending.call.Function.Name,
-            m.pending.call.Function.Arguments,
+            m.pending.call.Name,
+            m.pending.call.Arguments,
         )))
         sb.WriteByte('\n')
     }
@@ -438,15 +440,13 @@ func main() {
     registry.Register(tools.RunCode{})
 
     a := agent.NewAgent(client, registry)
-    model := ui.NewModel(a, agent.SystemPrompt)
+    model := ui.NewModel(a)
 
     p := tea.NewProgram(model, tea.WithAltScreen())
     if _, err := p.Run(); err != nil {
         log.Fatalf("ui: %v", err)
     }
 }
-
-var _ = api.NewSystemMessage // silence unused import in case
 ```
 
 `tea.WithAltScreen` flips the terminal into alt-screen mode (the same mode `vim` and `less` use), giving us a clean canvas that's restored on exit.

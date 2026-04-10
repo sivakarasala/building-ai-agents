@@ -53,19 +53,17 @@ func (WebSearch) RequiresApproval() bool   { return false }
 
 func (WebSearch) Definition() api.ToolDefinition {
     return api.ToolDefinition{
-        Type: "function",
-        Function: api.FunctionDefinition{
-            Name:        "web_search",
-            Description: "Search the web for current information. Returns a summarized answer plus the top result snippets. Use this when you need information beyond your training data.",
-            Parameters: json.RawMessage(`{
-                "type": "object",
-                "properties": {
-                    "query":       {"type": "string", "description": "The search query"},
-                    "max_results": {"type": "integer", "description": "Maximum number of results", "default": 5}
-                },
-                "required": ["query"]
-            }`),
-        },
+        Type:        "function",
+        Name:        "web_search",
+        Description: "Search the web for current information. Returns a summarized answer plus the top result snippets. Use this when you need information beyond your training data.",
+        Parameters: json.RawMessage(`{
+            "type": "object",
+            "properties": {
+                "query":       {"type": "string", "description": "The search query"},
+                "max_results": {"type": "integer", "description": "Maximum number of results", "default": 5}
+            },
+            "required": ["query"]
+        }`),
     }
 }
 
@@ -158,7 +156,7 @@ registry.Register(tools.NewWebSearch())
 
 ## Why Token Counting Matters
 
-Each model has a context window — the maximum number of tokens it'll accept in one request. `gpt-4.1-mini` has 128k tokens, which sounds enormous until you start reading entire files into context. A single 5000-line file is ~50k tokens. Two of those plus a long conversation plus tool definitions and you're in trouble.
+Each model has a context window — the maximum number of tokens it'll accept in one request. `gpt-5-mini` has a 400k context window, which sounds enormous until you start reading entire files into context. A single 5000-line file is ~50k tokens. A few of those plus a long conversation plus tool definitions and you're in trouble.
 
 We need to:
 
@@ -185,18 +183,16 @@ func EstimateTokens(s string) int {
     return (len(s) + 3) / 4
 }
 
-// EstimateMessages returns a rough total token count for a slice of messages.
-// Each message has a small per-message overhead for role and metadata.
-func EstimateMessages(messages []api.Message) int {
+// EstimateMessages returns a rough total token count for a slice of input items.
+// Each item has a small per-item overhead for framing.
+func EstimateMessages(items []api.InputItem) int {
     total := 0
-    for _, m := range messages {
-        total += 4 // role + framing
+    for _, m := range items {
+        total += 4 // role/type framing
         total += EstimateTokens(m.Content)
-        for _, tc := range m.ToolCalls {
-            total += 4
-            total += EstimateTokens(tc.Function.Name)
-            total += EstimateTokens(tc.Function.Arguments)
-        }
+        total += EstimateTokens(m.Name)
+        total += EstimateTokens(m.Arguments)
+        total += EstimateTokens(m.Output)
     }
     return total
 }
@@ -208,9 +204,11 @@ Yes, this is wildly approximate. It's also fast, allocation-free, and good enoug
 
 Compaction works in three steps:
 
-1. Decide which messages are "old" enough to summarize. Always keep the system prompt, the most recent user message, and the assistant turns that respond to it.
-2. Send the old messages to the model with a "summarize this" prompt.
-3. Replace the old messages with one new message: `system` role, content = summary.
+1. Decide which input items are "old" enough to summarize. Always keep the most recent user message and the assistant turns that respond to it.
+2. Send the old items to the model with a "summarize this" prompt.
+3. Replace the old items with a single user message containing the summary.
+
+Note that the system prompt isn't part of the `input` array — it lives in the top-level `instructions` field, so we never have to worry about preserving it during compaction.
 
 Create `context/compact.go`:
 
@@ -241,76 +239,64 @@ Produce a concise summary that preserves:
 
 Aim for under 300 words. Write in plain prose, no markdown.`
 
-// MaybeCompact compacts the message history if its estimated token count exceeds the limit.
-// It always keeps the system prompt and the trailing KeepRecent messages.
+// MaybeCompact compacts the input history if its estimated token count exceeds the limit.
+// It always keeps the trailing KeepRecent items verbatim. The top-level
+// `instructions` (system prompt) is not part of the input, so it's untouched.
 // Returns the (possibly unchanged) history.
-func MaybeCompact(ctx context.Context, client *api.Client, messages []api.Message, maxTokens int) ([]api.Message, error) {
+func MaybeCompact(ctx context.Context, client *api.Client, input []api.InputItem, maxTokens int) ([]api.InputItem, error) {
     if maxTokens <= 0 {
         maxTokens = DefaultMaxTokens
     }
-    if EstimateMessages(messages) < maxTokens {
-        return messages, nil
+    if EstimateMessages(input) < maxTokens {
+        return input, nil
     }
-    if len(messages) <= KeepRecent+1 {
-        return messages, nil // not enough room to compact safely
-    }
-
-    var systemMsg *api.Message
-    start := 0
-    if messages[0].Role == "system" {
-        m := messages[0]
-        systemMsg = &m
-        start = 1
+    if len(input) <= KeepRecent+1 {
+        return input, nil // not enough room to compact safely
     }
 
-    cutoff := len(messages) - KeepRecent
-    if cutoff <= start {
-        return messages, nil
-    }
-    toSummarize := messages[start:cutoff]
-    keep := messages[cutoff:]
+    cutoff := len(input) - KeepRecent
+    toSummarize := input[:cutoff]
+    keep := input[cutoff:]
 
     summary, err := summarize(ctx, client, toSummarize)
     if err != nil {
         return nil, err
     }
 
-    out := make([]api.Message, 0, 2+len(keep))
-    if systemMsg != nil {
-        out = append(out, *systemMsg)
-    }
-    out = append(out, api.Message{
-        Role:    "system",
+    out := make([]api.InputItem, 0, 1+len(keep))
+    out = append(out, api.InputItem{
+        Role:    "user",
         Content: "Summary of earlier conversation:\n" + summary,
     })
     out = append(out, keep...)
     return out, nil
 }
 
-func summarize(ctx context.Context, client *api.Client, messages []api.Message) (string, error) {
+func summarize(ctx context.Context, client *api.Client, items []api.InputItem) (string, error) {
     var transcript strings.Builder
-    for _, m := range messages {
-        fmt.Fprintf(&transcript, "[%s] %s\n", m.Role, m.Content)
-        for _, tc := range m.ToolCalls {
-            fmt.Fprintf(&transcript, "  tool_call: %s(%s)\n", tc.Function.Name, tc.Function.Arguments)
+    for _, m := range items {
+        switch m.Type {
+        case "function_call":
+            fmt.Fprintf(&transcript, "[tool_call] %s(%s)\n", m.Name, m.Arguments)
+        case "function_call_output":
+            fmt.Fprintf(&transcript, "[tool_result] %s\n", m.Output)
+        default:
+            fmt.Fprintf(&transcript, "[%s] %s\n", m.Role, m.Content)
         }
     }
 
-    req := api.ChatCompletionRequest{
-        Model: "gpt-4.1-mini",
-        Messages: []api.Message{
-            api.NewSystemMessage(compactSystemPrompt),
+    req := api.ResponsesRequest{
+        Model:        "gpt-5-mini",
+        Instructions: compactSystemPrompt,
+        Input: []api.InputItem{
             api.NewUserMessage(transcript.String()),
         },
     }
-    resp, err := client.ChatCompletion(ctx, req)
+    resp, err := client.CreateResponse(ctx, req)
     if err != nil {
         return "", fmt.Errorf("compact summary call: %w", err)
     }
-    if len(resp.Choices) == 0 {
-        return "", fmt.Errorf("compact summary returned no choices")
-    }
-    return resp.Choices[0].Message.Content, nil
+    return resp.OutputText, nil
 }
 ```
 
@@ -328,27 +314,27 @@ Update `agent/run.go`. Right at the top of the `for` loop in the goroutine, befo
 import contextpkg "github.com/yourname/agents-go/context"
 
 // ... inside the for loop, before constructing req:
-compacted, err := contextpkg.MaybeCompact(ctx, a.client, history, contextpkg.DefaultMaxTokens)
+compacted, err := contextpkg.MaybeCompact(ctx, a.client, input, contextpkg.DefaultMaxTokens)
 if err != nil {
     events <- Event{Kind: EventError, Err: err}
     return
 }
-history = compacted
+input = compacted
 ```
 
 The import alias dodges a clash with the standard library's `context` package, which we already use in this file. (Naming a package `context` is a sin we're committing for didactic clarity — in a real project you'd call this package `convo` or `history` to avoid the alias.)
 
-That's the whole integration. Compaction is invisible to the rest of the loop: a step that occasionally rewrites `history` between turns.
+That's the whole integration. Compaction is invisible to the rest of the loop: a step that occasionally rewrites `input` between turns.
 
 ## Trying It Out
 
 You don't easily hit the compaction threshold by hand, but you can lower it temporarily to watch it fire:
 
 ```go
-compacted, err := contextpkg.MaybeCompact(ctx, a.client, history, 2000)
+compacted, err := contextpkg.MaybeCompact(ctx, a.client, input, 2000)
 ```
 
-Now run a session that reads a couple of files. After the second or third turn you'll see the assistant continue working as if nothing happened — but if you log `len(history)` before and after `MaybeCompact`, you'll see it shrink.
+Now run a session that reads a couple of files. After the second or third turn you'll see the assistant continue working as if nothing happened — but if you log `len(input)` before and after `MaybeCompact`, you'll see it shrink.
 
 ## Summary
 

@@ -18,12 +18,12 @@ This chapter walks through the changes that turn a demo into something you'd let
 OpenAI returns transient `429` (rate limit) and `5xx` (server) errors. They're almost always solved by waiting a bit and trying again. Add a tiny retry helper to `api/client.go`:
 
 ```go
-func (c *Client) ChatCompletionWithRetry(ctx context.Context, req ChatCompletionRequest) (*ChatCompletionResponse, error) {
+func (c *Client) CreateResponseWithRetry(ctx context.Context, req ResponsesRequest) (*ResponsesResponse, error) {
     var lastErr error
     delay := 500 * time.Millisecond
 
     for attempt := 0; attempt < 4; attempt++ {
-        resp, err := c.ChatCompletion(ctx, req)
+        resp, err := c.CreateResponse(ctx, req)
         if err == nil {
             return resp, nil
         }
@@ -76,7 +76,7 @@ func NewClient(apiKey string) *Client {
     }
 }
 
-// Inside ChatCompletion / ChatCompletionStream, before the request:
+// Inside CreateResponse / CreateResponseStream, before the request:
 if err := c.limiter.Wait(ctx); err != nil {
     return nil, err
 }
@@ -196,10 +196,10 @@ Before shipping the agent to anyone who isn't you:
 
 Step back for a moment. Across ten chapters you have:
 
-- Modeled the OpenAI API as Go structs and called it with raw `net/http`
+- Modeled the OpenAI Responses API as Go structs and called it with raw `net/http`
 - Defined a `Tool` interface and a registry that holds heterogeneous tool types
 - Built an evaluation framework with single-turn scoring, multi-turn rubrics, and an LLM judge
-- Parsed Server-Sent Events with `bufio.Scanner` and accumulated fragmented tool calls
+- Parsed Responses API Server-Sent Events with `bufio.Scanner` and captured complete function calls from the terminal `response.completed` event
 - Implemented file, web, shell, and code-execution tools idiomatic to Go
 - Estimated tokens and compacted long conversations with an LLM-generated summary
 - Built a Bubble Tea terminal UI that bridges three concurrent goroutines via channels
