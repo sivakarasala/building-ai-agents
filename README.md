@@ -14,6 +14,8 @@ A hands-on guide to building a fully functional CLI AI agent with tool calling, 
 
 Built with the Vercel AI SDK, Zod schemas, and React + Ink for the terminal UI.
 
+**Companion code repo:** [Hendrixer/agents-v2](https://github.com/Hendrixer/agents-v2) — one branch per chapter (`lesson-01` … `lesson-09`, plus `done` for the finished app).
+
 | Chapter | Topic |
 |---------|-------|
 | 1 | [Intro to Agents](https://sivakarasala.github.io/building-ai-agents/typescript/01-intro-to-agents.html) |

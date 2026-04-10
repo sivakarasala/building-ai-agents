@@ -4,6 +4,8 @@ A hands-on guide to building a fully functional AI agent with tool calling, eval
 
 > Inspired by and adapted from [Hendrixer/agents-v2](https://github.com/Hendrixer/agents-v2) and the [AI Agents v2 course on Frontend Masters](https://frontendmasters.com/courses/ai-agents-v2/) by Scott Moss.
 
+> 💻 **Companion code repo:** [Hendrixer/agents-v2](https://github.com/Hendrixer/agents-v2). The repo has one branch per chapter — check out `lesson-01` to start, and each `lesson-XX` branch is the starter for chapter XX (i.e. the completed state of the previous chapter). The `done` branch has the finished app.
+
 ---
 
 ## What You'll Build
