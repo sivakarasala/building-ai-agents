@@ -32,6 +32,7 @@ jobs:
           cd rust && mdbook build && cd ..
           cd go && mdbook build && cd ..
           cd java && mdbook build && cd ..
+          cd no-code && mdbook build && cd ..
           cp index.html docs/index.html
 
       - name: Upload artifact

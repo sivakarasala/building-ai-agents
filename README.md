@@ -1,6 +1,6 @@
 # Building AI Agents from Scratch
 
-A hands-on guide to building a fully functional CLI AI agent with tool calling, streaming, evaluations, context management, and human-in-the-loop safety. Available in five languages.
+A hands-on guide to building a fully functional CLI AI agent with tool calling, streaming, evaluations, context management, and human-in-the-loop safety. Available in five languages — plus a no-code edition for product roles.
 
 **[Read Online →](https://sivakarasala.github.io/building-ai-agents/)**
 
@@ -97,6 +97,19 @@ Java 21 with `java.net.http.HttpClient` and Jackson. Sealed types and records. V
 | 8 | [Shell Tool & Code Execution](https://sivakarasala.github.io/building-ai-agents/java/08-shell-tool.html) |
 | 9 | [Terminal UI with Lanterna](https://sivakarasala.github.io/building-ai-agents/java/09-terminal-ui.html) |
 | 10 | [Going to Production](https://sivakarasala.github.io/building-ai-agents/java/10-going-to-production.html) |
+
+### [No-Code Edition](https://sivakarasala.github.io/building-ai-agents/no-code/)
+
+For product managers, owners, designers, and analysts. Build the same Python agent by guiding a coding agent (Claude Code, Cursor, etc.) through a sequence of prompts. No programming required — the coding agent writes the code, you drive.
+
+| Chapter | Topic |
+|---------|-------|
+| 0 | [Setting Up Your Coding Agent](https://sivakarasala.github.io/building-ai-agents/no-code/00-setup-coding-agent.html) |
+| 1 | [Your First LLM Call](https://sivakarasala.github.io/building-ai-agents/no-code/01-first-llm-call.html) |
+| 2 | [Tool Calling](https://sivakarasala.github.io/building-ai-agents/no-code/02-tool-calling.html) |
+| 3 | [Single-Turn Evaluations](https://sivakarasala.github.io/building-ai-agents/no-code/03-single-turn-evals.html) |
+
+Chapters 4–10 follow the same prompt-driven format and are in progress.
 
 ---
 
