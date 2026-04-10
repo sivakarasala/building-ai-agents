@@ -72,12 +72,21 @@ Four dependencies, all minimal:
 
 The Shadow plugin lets us produce a fat JAR (`./gradlew shadowJar`) so the agent ships as a single file.
 
+### Get an OpenAI API Key
+
+You'll need an API key to call the model. If you don't already have one:
+
+1. Go to [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+2. Sign in (or sign up) and click **Create new secret key**
+3. Copy the key — it starts with `sk-` — somewhere safe; OpenAI won't show it again
+4. Add a payment method at [platform.openai.com/account/billing](https://platform.openai.com/account/billing) if you haven't already. The chapters in this book cost a few cents to run end-to-end on `gpt-5-mini`.
+
 ### Environment
 
-Create `.env` in the project root:
+Create `.env` in the project root and paste the key:
 
 ```
-OPENAI_API_KEY=your-openai-api-key-here
+OPENAI_API_KEY=sk-...
 ```
 
 And `.gitignore`:
