@@ -30,6 +30,8 @@ jobs:
           cd typescript && mdbook build && cd ..
           cd python && mdbook build && cd ..
           cd rust && mdbook build && cd ..
+          cd go && mdbook build && cd ..
+          cd java && mdbook build && cd ..
           cp index.html docs/index.html
 
       - name: Upload artifact

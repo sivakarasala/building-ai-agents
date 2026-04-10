@@ -1,6 +1,6 @@
 # Building AI Agents from Scratch
 
-A hands-on guide to building a fully functional CLI AI agent with tool calling, streaming, evaluations, context management, and human-in-the-loop safety. Available in three languages.
+A hands-on guide to building a fully functional CLI AI agent with tool calling, streaming, evaluations, context management, and human-in-the-loop safety. Available in five languages.
 
 **[Read Online →](https://sivakarasala.github.io/building-ai-agents/)**
 
@@ -61,6 +61,40 @@ Raw HTTP with reqwest. Manual SSE parsing. Trait objects for tool dispatch. Rata
 
 **Appendices:**
 [Async Primer](https://sivakarasala.github.io/building-ai-agents/rust/appendix-a-async-primer.html) · [Serde Deep Dive](https://sivakarasala.github.io/building-ai-agents/rust/appendix-b-serde.html) · [Trait Objects](https://sivakarasala.github.io/building-ai-agents/rust/appendix-c-trait-objects.html) · [Error Handling](https://sivakarasala.github.io/building-ai-agents/rust/appendix-d-error-handling.html) · [Ratatui & Immediate-Mode UI](https://sivakarasala.github.io/building-ai-agents/rust/appendix-e-ratatui.html)
+
+### [Go Edition](https://sivakarasala.github.io/building-ai-agents/go/)
+
+Standard library `net/http`. Goroutines and channels for the agent loop. Bubble Tea for terminal UI. Single static binary, no framework.
+
+| Chapter | Topic |
+|---------|-------|
+| 1 | [Setup and Your First LLM Call](https://sivakarasala.github.io/building-ai-agents/go/01-setup-and-first-call.html) |
+| 2 | [Tool Calling with JSON Schema](https://sivakarasala.github.io/building-ai-agents/go/02-tool-calling.html) |
+| 3 | [Single-Turn Evaluations](https://sivakarasala.github.io/building-ai-agents/go/03-single-turn-evals.html) |
+| 4 | [The Agent Loop — SSE Streaming](https://sivakarasala.github.io/building-ai-agents/go/04-the-agent-loop.html) |
+| 5 | [Multi-Turn Evaluations](https://sivakarasala.github.io/building-ai-agents/go/05-multi-turn-evals.html) |
+| 6 | [File System Tools](https://sivakarasala.github.io/building-ai-agents/go/06-file-system-tools.html) |
+| 7 | [Web Search & Context Management](https://sivakarasala.github.io/building-ai-agents/go/07-web-search-context-management.html) |
+| 8 | [Shell Tool & Code Execution](https://sivakarasala.github.io/building-ai-agents/go/08-shell-tool.html) |
+| 9 | [Terminal UI with Bubble Tea](https://sivakarasala.github.io/building-ai-agents/go/09-terminal-ui.html) |
+| 10 | [Going to Production](https://sivakarasala.github.io/building-ai-agents/go/10-going-to-production.html) |
+
+### [Java Edition](https://sivakarasala.github.io/building-ai-agents/java/)
+
+Java 21 with `java.net.http.HttpClient` and Jackson. Sealed types and records. Virtual threads for concurrency. Lanterna for terminal UI.
+
+| Chapter | Topic |
+|---------|-------|
+| 1 | [Setup and Your First LLM Call](https://sivakarasala.github.io/building-ai-agents/java/01-setup-and-first-call.html) |
+| 2 | [Tool Calling with JSON Schema](https://sivakarasala.github.io/building-ai-agents/java/02-tool-calling.html) |
+| 3 | [Single-Turn Evaluations](https://sivakarasala.github.io/building-ai-agents/java/03-single-turn-evals.html) |
+| 4 | [The Agent Loop — SSE Streaming](https://sivakarasala.github.io/building-ai-agents/java/04-the-agent-loop.html) |
+| 5 | [Multi-Turn Evaluations](https://sivakarasala.github.io/building-ai-agents/java/05-multi-turn-evals.html) |
+| 6 | [File System Tools](https://sivakarasala.github.io/building-ai-agents/java/06-file-system-tools.html) |
+| 7 | [Web Search & Context Management](https://sivakarasala.github.io/building-ai-agents/java/07-web-search-context-management.html) |
+| 8 | [Shell Tool & Code Execution](https://sivakarasala.github.io/building-ai-agents/java/08-shell-tool.html) |
+| 9 | [Terminal UI with Lanterna](https://sivakarasala.github.io/building-ai-agents/java/09-terminal-ui.html) |
+| 10 | [Going to Production](https://sivakarasala.github.io/building-ai-agents/java/10-going-to-production.html) |
 
 ---
 

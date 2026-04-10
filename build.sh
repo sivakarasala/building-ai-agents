@@ -12,6 +12,12 @@ echo "Building Python edition..."
 echo "Building Rust edition..."
 (cd "$ROOT/rust" && mdbook build)
 
+echo "Building Go edition..."
+(cd "$ROOT/go" && mdbook build)
+
+echo "Building Java edition..."
+(cd "$ROOT/java" && mdbook build)
+
 # Copy landing page to docs root
 cp "$ROOT/index.html" "$ROOT/docs/index.html"
 

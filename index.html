@@ -90,6 +90,8 @@
         .tag-ts { background: #1d3557; color: #58a6ff; }
         .tag-py { background: #1a3a1a; color: #56d364; }
         .tag-rs { background: #3d2000; color: #f0883e; }
+        .tag-go { background: #003a4d; color: #5dc9e2; }
+        .tag-java { background: #3a1a00; color: #f89820; }
 
         .card p {
             font-size: 0.95rem;
@@ -169,7 +171,7 @@
         <header>
             <h1>Building AI Agents<br>from Scratch</h1>
             <p class="subtitle">
-                A hands-on guide to building a fully functional CLI AI agent with tool calling, streaming, evaluations, context management, and human-in-the-loop safety. Available in three languages.
+                A hands-on guide to building a fully functional CLI AI agent with tool calling, streaming, evaluations, context management, and human-in-the-loop safety. Available in five languages.
             </p>
         </header>
 
@@ -196,6 +198,22 @@
                 <h2>Rust Edition</h2>
                 <p>Raw HTTP with reqwest. Manual SSE parsing. Trait objects for tool dispatch. Ratatui for terminal UI. No SDK, full control.</p>
                 <div class="chapters">10 chapters + 5 appendices</div>
+            </a>
+
+            <a href="go/index.html" class="card">
+                <div class="card-icon">GO</div>
+                <span class="lang-tag tag-go">Go</span>
+                <h2>Go Edition</h2>
+                <p>Standard library net/http. Goroutines and channels for the agent loop. Bubble Tea for terminal UI. Single static binary, no framework.</p>
+                <div class="chapters">10 chapters</div>
+            </a>
+
+            <a href="java/index.html" class="card">
+                <div class="card-icon">JV</div>
+                <span class="lang-tag tag-java">Java 21</span>
+                <h2>Java Edition</h2>
+                <p>java.net.http.HttpClient with Jackson. Sealed types and records. Virtual threads for concurrency. Lanterna for terminal UI.</p>
+                <div class="chapters">10 chapters</div>
             </a>
         </div>
 
