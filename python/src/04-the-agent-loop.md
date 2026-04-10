@@ -23,32 +23,44 @@ while True:
 
 The LLM decides when to stop. It might call one tool, process the result, call another, and then respond with text. Or it might call three tools in one turn, process all results, and respond. The loop keeps going until the LLM says "I'm done — here's my answer."
 
-## Streaming vs. Blocking
+## The Responses API
 
-In Chapter 2, we used `client.chat.completions.create()` which waits for the complete response before returning. That's fine for evals, but terrible for UX. Users want to see tokens appear in real-time.
+We're going to use OpenAI's **Responses API** (`client.responses.create`) — the newer, recommended path for building agents. It's simpler than Chat Completions for tool-using agents because:
 
-With `stream=True`, the SDK returns an iterator that yields chunks as they arrive:
+- **Tool calls and tool outputs are first-class typed items** in the conversation history, not parallel arrays you have to keep in sync.
+- **The system prompt is passed via the `instructions` parameter**, not as a system message in the input.
+- **Tool definitions are flat** — `{"type": "function", "name": ..., "parameters": ...}` — no nested `"function": {...}` wrapper. (That's why we used the flat shape from Chapter 2 onwards.)
+- **Streaming is event-based.** The stream yields events like `response.output_text.delta` (text chunks) and a final `response.completed` (the full response object). You don't have to reassemble fragmented `delta.tool_calls` from Chat Completions — the completed event hands you the full `output` array containing every item the model produced.
+
+With `stream=True`, the SDK returns an iterator that yields events as they arrive:
 
 ```python
-stream = client.chat.completions.create(
+stream = client.responses.create(
     model="gpt-5-mini",
-    messages=messages,
+    instructions=SYSTEM_PROMPT,
+    input=input_items,
     tools=tools,
     stream=True,
 )
 
-for chunk in stream:
-    delta = chunk.choices[0].delta
-    if delta.content:
+for event in stream:
+    if event.type == "response.output_text.delta":
         # A piece of text arrived
-        print(delta.content, end="", flush=True)
-    if delta.tool_calls:
-        # The LLM wants to call a tool
-        for tc in delta.tool_calls:
-            print(f"Tool: {tc.function.name}")
+        print(event.delta, end="", flush=True)
+    elif event.type == "response.completed":
+        # Full response object — walk event.response.output for tool calls
+        ...
 ```
 
-Streaming with tool calls is trickier than plain text streaming. Tool calls arrive in pieces — the function name comes first, then the arguments arrive incrementally as JSON fragments. We need to accumulate these fragments and parse them when complete.
+## Input Items
+
+Conversation history with the Responses API is a list of typed *input items*:
+
+- `{"role": "user"|"assistant", "content": "..."}` — plain messages
+- `{"type": "function_call", "call_id": ..., "name": ..., "arguments": "..."}` — when the model calls a tool
+- `{"type": "function_call_output", "call_id": ..., "output": "..."}` — when you return the result
+
+The `call_id` links a tool result back to the request.
 
 ## Building the Agent Loop
 
@@ -60,15 +72,23 @@ from typing import Any
 from openai import OpenAI
 from dotenv import load_dotenv
 
-from src.agent.tools import ALL_TOOLS, TOOL_EXECUTORS
+from src.agent.tools import ALL_TOOLS
 from src.agent.execute_tool import execute_tool
 from src.agent.system.prompt import SYSTEM_PROMPT
+from src.agent.system.filter_messages import filter_compatible_messages
 from src.types import AgentCallbacks, ToolCallInfo
 
 load_dotenv()
 
-client = OpenAI()
+_client: OpenAI | None = None
 MODEL_NAME = "gpt-5-mini"
+
+
+def _get_client() -> OpenAI:
+    global _client
+    if _client is None:
+        _client = OpenAI()
+    return _client
 
 
 def run_agent(
@@ -76,136 +96,97 @@ def run_agent(
     conversation_history: list[dict[str, Any]],
     callbacks: AgentCallbacks,
 ) -> list[dict[str, Any]]:
-    """Run the agent loop. Returns the updated message history."""
+    """Run the agent loop using the OpenAI Responses API.
 
-    messages: list[dict[str, Any]] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        *conversation_history,
+    Conversation history is a list of Responses API "input items":
+      - {"role": "user"|"assistant", "content": "..."}
+      - {"type": "function_call", "call_id": "...", "name": "...", "arguments": "..."}
+      - {"type": "function_call_output", "call_id": "...", "output": "..."}
+
+    The system prompt is sent via the `instructions` parameter, not as a message.
+    """
+    working_history = filter_compatible_messages(conversation_history)
+
+    input_items: list[dict[str, Any]] = [
+        *working_history,
         {"role": "user", "content": user_message},
     ]
 
     full_response = ""
 
     while True:
-        stream = client.chat.completions.create(
+        stream = _get_client().responses.create(
             model=MODEL_NAME,
-            messages=messages,
+            instructions=SYSTEM_PROMPT,
+            input=input_items,
             tools=ALL_TOOLS if ALL_TOOLS else None,
             stream=True,
         )
 
-        # Accumulate the streamed response
+        # Stream text deltas to the UI; capture the final response object on
+        # `response.completed` so we can read its full output items.
+        final_response = None
         current_text = ""
-        tool_calls_data: dict[int, dict[str, Any]] = {}
-        current_role = "assistant"
 
-        for chunk in stream:
-            choice = chunk.choices[0]
-            delta = choice.delta
+        for event in stream:
+            event_type = getattr(event, "type", None)
 
-            # Accumulate text content
-            if delta.content:
-                current_text += delta.content
-                callbacks.on_token(delta.content)
+            if event_type == "response.output_text.delta":
+                delta = getattr(event, "delta", "")
+                if delta:
+                    current_text += delta
+                    callbacks.on_token(delta)
 
-            # Accumulate tool calls (they arrive in fragments)
-            if delta.tool_calls:
-                for tc_delta in delta.tool_calls:
-                    idx = tc_delta.index
-
-                    if idx not in tool_calls_data:
-                        tool_calls_data[idx] = {
-                            "id": "",
-                            "name": "",
-                            "arguments": "",
-                        }
-
-                    if tc_delta.id:
-                        tool_calls_data[idx]["id"] = tc_delta.id
-                    if tc_delta.function:
-                        if tc_delta.function.name:
-                            tool_calls_data[idx]["name"] = tc_delta.function.name
-                        if tc_delta.function.arguments:
-                            tool_calls_data[idx]["arguments"] += (
-                                tc_delta.function.arguments
-                            )
-
-            # Check for finish reason
-            if choice.finish_reason:
-                finish_reason = choice.finish_reason
+            elif event_type == "response.completed":
+                final_response = getattr(event, "response", None)
 
         full_response += current_text
 
-        # Build tool calls list
-        tool_calls: list[ToolCallInfo] = []
-        for idx in sorted(tool_calls_data.keys()):
-            tc_data = tool_calls_data[idx]
-            try:
-                args = json.loads(tc_data["arguments"]) if tc_data["arguments"] else {}
-            except json.JSONDecodeError:
-                args = {}
-
-            tool_calls.append(
-                ToolCallInfo(
-                    tool_call_id=tc_data["id"],
-                    tool_name=tc_data["name"],
-                    args=args,
-                )
-            )
-            callbacks.on_tool_call_start(tc_data["name"], args)
-
-        # If no tool calls, we're done
-        if finish_reason != "tool_calls" or not tool_calls:
-            # Add the assistant's text response to history
-            messages.append({"role": "assistant", "content": current_text or ""})
+        if final_response is None:
+            # Stream ended without a completed event — nothing more to do
             break
 
-        # Add the assistant message with tool calls to history
-        assistant_message: dict[str, Any] = {
-            "role": "assistant",
-            "content": current_text or None,
-            "tool_calls": [
-                {
-                    "id": tc.tool_call_id,
-                    "type": "function",
-                    "function": {
-                        "name": tc.tool_name,
-                        "arguments": json.dumps(tc.args),
-                    },
-                }
-                for tc in tool_calls
-            ],
-        }
-        messages.append(assistant_message)
+        # Walk the output items: append everything (assistant text, reasoning,
+        # function_call) to history so the next turn has full context, and
+        # collect any function_call items we need to execute.
+        function_calls: list[ToolCallInfo] = []
 
-        # Execute each tool and add results to message history
-        import asyncio
+        for item in final_response.output:
+            item_dict = item.model_dump(exclude_none=True)
+            input_items.append(item_dict)
 
-        rejected = False
-        for tc in tool_calls:
-            # Check for approval
-            approved = asyncio.get_event_loop().run_until_complete(
-                callbacks.on_tool_approval(tc.tool_name, tc.args)
-            )
+            if item_dict.get("type") == "function_call":
+                try:
+                    args = json.loads(item_dict.get("arguments") or "{}")
+                except json.JSONDecodeError:
+                    args = {}
+                function_calls.append(ToolCallInfo(
+                    tool_call_id=item_dict["call_id"],
+                    tool_name=item_dict["name"],
+                    args=args,
+                ))
 
-            if not approved:
-                rejected = True
-                break
+        # No function calls → the model gave a final answer; we're done
+        if not function_calls:
+            break
 
+        for tc in function_calls:
+            callbacks.on_tool_call_start(tc.tool_name, tc.args)
+
+        # Execute each function call and append the corresponding
+        # function_call_output item back into the input.
+        for tc in function_calls:
             result = execute_tool(tc.tool_name, tc.args)
             callbacks.on_tool_call_end(tc.tool_name, result)
 
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.tool_call_id,
-                "content": result,
+            input_items.append({
+                "type": "function_call_output",
+                "call_id": tc.tool_call_id,
+                "output": result,
             })
 
-        if rejected:
-            break
-
     callbacks.on_complete(full_response)
-    return messages
+    return input_items
 ```
 
 Let's walk through this step by step.
@@ -227,89 +208,76 @@ The function takes:
 
 It returns the updated message history, which the caller stores for the next turn.
 
-### Streaming Tool Call Accumulation
+### Streaming events
 
-This is the trickiest part. When the LLM calls a tool, the data arrives in fragments:
+While the response streams, we only care about two event types:
 
-```
-Chunk 1: tool_calls[0].id = "call_abc123"
-Chunk 2: tool_calls[0].function.name = "list_files"
-Chunk 3: tool_calls[0].function.arguments = '{"dir'
-Chunk 4: tool_calls[0].function.arguments = 'ectory":'
-Chunk 5: tool_calls[0].function.arguments = ' "."}'
-```
+- **`response.output_text.delta`** — text chunks. We forward each one to the UI via `callbacks.on_token` and accumulate them locally so we can return the full text at the end.
+- **`response.completed`** — the final event that hands us the full `response` object. Its `output` array contains every typed item the model produced this turn (assistant text, reasoning, `function_call`, etc.).
 
-We use a dict indexed by `tc_delta.index` to accumulate each tool call's fragments. The `id` and `name` come once, but `arguments` is concatenated from multiple chunks.
+That's it. There's no per-chunk reassembly of fragmented tool call arguments — the SDK does that for us and gives us the complete `function_call` items in `response.output`.
 
-After streaming completes, we parse the accumulated JSON arguments and build `ToolCallInfo` objects.
+### The Input Item Format
 
-### The Message Format
-
-OpenAI's API requires a specific message format for tool calls:
+History on the Responses API is a list of typed items rather than role-tagged messages with parallel `tool_calls` arrays. After a turn that calls `list_files`, your `input_items` list looks like:
 
 ```python
-# Assistant message requesting tool calls
-{
-    "role": "assistant",
-    "content": null,
-    "tool_calls": [
-        {
-            "id": "call_abc123",
-            "type": "function",
-            "function": {
-                "name": "list_files",
-                "arguments": '{"directory": "."}'
-            }
-        }
-    ]
-}
-
-# Tool result message
-{
-    "role": "tool",
-    "tool_call_id": "call_abc123",
-    "content": "[dir] src\n[file] README.md"
-}
+[
+    {"role": "user", "content": "What files are in the current directory?"},
+    # The model's tool call — emitted in response.output, appended verbatim
+    {
+        "type": "function_call",
+        "call_id": "call_abc123",
+        "name": "list_files",
+        "arguments": '{"directory": "."}',
+    },
+    # Our tool result — we build this and append it
+    {
+        "type": "function_call_output",
+        "call_id": "call_abc123",
+        "output": "[dir] src\n[file] README.md",
+    },
+]
 ```
 
-The `tool_call_id` links the result back to the request. Without it, the LLM can't match results to requests.
+The `call_id` links the result back to the request. The next call to `responses.create` sees the full list and the model picks up where it left off.
 
 ### The Loop
 
 ```python
 while True:
-    stream = client.chat.completions.create(...)
-    # ... process stream ...
+    stream = client.responses.create(...)
+    # ... stream text deltas, capture final_response on response.completed ...
 
-    if finish_reason != "tool_calls" or not tool_calls:
-        break  # LLM is done
+    # Append every output item to input_items, collect function_call items
+    for item in final_response.output:
+        input_items.append(item.model_dump(exclude_none=True))
+        if item is a function_call:
+            function_calls.append(...)
 
-    # Execute tools, add results to messages, loop again
+    if not function_calls:
+        break  # model gave a final answer
+
+    # Execute each tool, append a function_call_output for each, loop
 ```
 
 Each iteration:
-1. Sends the current messages to the LLM
-2. Streams the response, collecting text and tool calls
-3. Checks the `finish_reason`:
-   - `"tool_calls"` → The LLM wants tools executed. Do it and loop.
-   - Anything else (`"stop"`, `"length"`, etc.) → The LLM is done. Break.
+1. Sends the current input items to the model
+2. Streams the response, accumulating text deltas and capturing the final response object
+3. Appends every output item to history, then collects any `function_call` items
+4. If there are no function calls → the model is done. Break.
+5. Otherwise, execute each one, append a matching `function_call_output`, and loop.
 
 ## Testing the Loop
 
 Let's test with a simple script. Update `src/main.py`:
 
 ```python
-import asyncio
 from dotenv import load_dotenv
 from src.agent.run import run_agent
 from src.types import AgentCallbacks
 
 load_dotenv()
-
-
-async def approve_all(name: str, args) -> bool:
-    return True
-
 
 history: list = []
 
@@ -323,11 +291,10 @@ result = run_agent(
             f"[Result] {name}: {result[:100]}..."
         ),
         on_complete=lambda response: print("\n[Done]"),
-        on_tool_approval=approve_all,
     ),
 )
 
-print(f"\nTotal messages: {len(result)}")
+print(f"\nTotal items: {len(result)}")
 ```
 
 Run it:
@@ -343,31 +310,29 @@ You should see the agent:
 
 That's the loop in action. The LLM made two tool calls across potentially multiple loop iterations, got the results, and synthesized a coherent response.
 
-## The Message History
+## The Input Item History
 
-After the loop, the messages list looks something like:
+After the loop, the `input_items` list looks something like:
 
 ```
-[system]    "You are a helpful AI assistant..."
-[user]      "What files are in the current directory? Then read..."
-[assistant] (tool call: list_files)
-[tool]      "[dir] src\n[file] pyproject.toml..."
-[assistant] (tool call: read_file)
-[tool]      "[project]\nname = 'agi'..."
-[assistant] "Your project has the following files... The pyproject.toml shows..."
+[user]                  "What files are in the current directory? Then read..."
+[function_call]         list_files({"directory": "."})
+[function_call_output]  "[dir] src\n[file] pyproject.toml..."
+[function_call]         read_file({"path": "pyproject.toml"})
+[function_call_output]  "[project]\nname = 'agi'..."
+[assistant message]     "Your project has the following files... The pyproject.toml shows..."
 ```
 
-This is the full conversation history. The LLM sees all of it on each iteration, which is how it maintains context. This is also why context management (Chapter 7) becomes important — this history grows with every interaction.
+Note that the system prompt is *not* in this list — it's passed via `instructions` on every call. Everything else is the full conversation history. The LLM sees all of it on each iteration, which is how it maintains context. This is also why context management (Chapter 7) becomes important — this history grows with every interaction.
 
 ## Summary
 
 In this chapter you:
 
-- Built the core agent loop with streaming
-- Handled the complexity of accumulating fragmented tool calls from the stream
-- Understood the OpenAI message format for tool calls and results
+- Built the core agent loop on the OpenAI Responses API
+- Streamed text deltas to the UI and captured the final response on `response.completed`
+- Worked with typed input items (`function_call`, `function_call_output`) instead of role-tagged messages
 - Used callbacks to decouple agent logic from UI
-- Added error handling and tool approval hooks
 
 This is the engine of the agent. Everything else — more tools, context management, human approval — plugs into this loop. In the next chapter, we'll build multi-turn evaluations to test the full loop.
 

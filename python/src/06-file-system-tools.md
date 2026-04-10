@@ -36,23 +36,21 @@ def write_file_execute(args: dict[str, Any]) -> str:
 
 WRITE_FILE_TOOL = {
     "type": "function",
-    "function": {
-        "name": "write_file",
-        "description": "Write content to a file at the specified path. Creates the file if it doesn't exist, overwrites if it does.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "The path to the file to write",
-                },
-                "content": {
-                    "type": "string",
-                    "description": "The content to write to the file",
-                },
+    "name": "write_file",
+    "description": "Write content to a file at the specified path. Creates the file if it doesn't exist, overwrites if it does.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "The path to the file to write",
             },
-            "required": ["path", "content"],
+            "content": {
+                "type": "string",
+                "description": "The content to write to the file",
+            },
         },
+        "required": ["path", "content"],
     },
 }
 ```
@@ -76,19 +74,17 @@ def delete_file_execute(args: dict[str, Any]) -> str:
 
 DELETE_FILE_TOOL = {
     "type": "function",
-    "function": {
-        "name": "delete_file",
-        "description": "Delete a file at the specified path. Use with caution as this is irreversible.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "The path to the file to delete",
-                }
-            },
-            "required": ["path"],
+    "name": "delete_file",
+    "description": "Delete a file at the specified path. Use with caution as this is irreversible.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "The path to the file to delete",
+            }
         },
+        "required": ["path"],
     },
 }
 ```

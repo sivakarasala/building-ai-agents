@@ -167,14 +167,14 @@ load_dotenv()
 
 client = OpenAI()
 
-response = client.chat.completions.create(
+response = client.responses.create(
     model="gpt-5-mini",
-    messages=[
+    input=[
         {"role": "user", "content": "What is an AI agent in one sentence?"}
     ],
 )
 
-print(response.choices[0].message.content)
+print(response.output_text)
 ```
 
 Run it:
@@ -196,8 +196,8 @@ That's a single LLM call. No tools, no loop, no agent — yet.
 
 The OpenAI Python SDK is the foundation we'll build on. It provides:
 
-- **`client.chat.completions.create()`** — Make a single LLM call and get the full response
-- **`client.chat.completions.create(stream=True)`** — Stream tokens as they're generated (we'll use this for the agent)
+- **`client.responses.create()`** — Make a single LLM call and get the full response
+- **`client.responses.create(stream=True)`** — Stream tokens as they're generated (we'll use this for the agent)
 - **Tool calling via `tools` parameter** — Define tools the LLM can call
 - **`client.responses.parse()`** — Get structured output with Pydantic models (we'll use this for evals)
 

@@ -71,39 +71,35 @@ def list_files_execute(args: dict[str, Any]) -> str:
         return f"Error listing directory: {e}"
 
 
-# Tool definitions in OpenAI's format
+# Tool definitions in OpenAI's Responses API format (flat)
 READ_FILE_TOOL = {
     "type": "function",
-    "function": {
-        "name": "read_file",
-        "description": "Read the contents of a file at the specified path. Use this to examine file contents.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "The path to the file to read",
-                }
-            },
-            "required": ["path"],
+    "name": "read_file",
+    "description": "Read the contents of a file at the specified path. Use this to examine file contents.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "The path to the file to read",
+            }
         },
+        "required": ["path"],
     },
 }
 
 LIST_FILES_TOOL = {
     "type": "function",
-    "function": {
-        "name": "list_files",
-        "description": "List all files and directories in the specified directory path.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "directory": {
-                    "type": "string",
-                    "description": "The directory path to list contents of",
-                    "default": ".",
-                }
-            },
+    "name": "list_files",
+    "description": "List all files and directories in the specified directory path.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "directory": {
+                "type": "string",
+                "description": "The directory path to list contents of",
+                "default": ".",
+            }
         },
     },
 }
@@ -111,7 +107,7 @@ LIST_FILES_TOOL = {
 
 Let's break this down:
 
-**Tool Definition**: The dict with `type`, `function`, `name`, `description`, and `parameters` is exactly what OpenAI's API expects. This is sent to the LLM so it knows what tools exist.
+**Tool Definition**: The dict with `type`, `name`, `description`, and `parameters` is exactly what OpenAI's Responses API expects. This is sent to the LLM so it knows what tools exist. (Note: this *flat* shape is what the Responses API uses. The older Chat Completions API nested these inside a `"function": {...}` key — we use the Responses API throughout this book.)
 
 **Description**: This is surprisingly important. The LLM reads this to decide whether to use the tool. A vague description like "file tool" would confuse the model. Be specific about *what* the tool does and *when* to use it.
 
@@ -171,24 +167,26 @@ load_dotenv()
 
 client = OpenAI()
 
-response = client.chat.completions.create(
+response = client.responses.create(
     model="gpt-5-mini",
-    messages=[
-        {"role": "system", "content": SYSTEM_PROMPT},
+    instructions=SYSTEM_PROMPT,
+    input=[
         {"role": "user", "content": "What files are in the current directory?"},
     ],
     tools=ALL_TOOLS,
 )
 
-message = response.choices[0].message
-print("Text:", message.content)
-print("Tool calls:", json.dumps(
-    [
-        {"name": tc.function.name, "args": json.loads(tc.function.arguments)}
-        for tc in (message.tool_calls or [])
-    ],
-    indent=2,
-))
+print("Text:", response.output_text)
+
+tool_calls = []
+for item in response.output:
+    item_dict = item.model_dump(exclude_none=True)
+    if item_dict.get("type") == "function_call":
+        tool_calls.append({
+            "name": item_dict["name"],
+            "args": json.loads(item_dict.get("arguments") or "{}"),
+        })
+print("Tool calls:", json.dumps(tool_calls, indent=2))
 ```
 
 Run it:
@@ -200,7 +198,7 @@ python -m src.main
 You should see:
 
 ```
-Text: None
+Text:
 Tool calls: [
   {
     "name": "list_files",
@@ -209,7 +207,7 @@ Tool calls: [
 ]
 ```
 
-Notice the text is `None`. The LLM decided to call `list_files` instead of responding with text. It saw the tools available, read their descriptions, and chose the right one.
+Notice the text is empty. The LLM decided to call `list_files` instead of responding with text. It saw the tools available, read their descriptions, and chose the right one.
 
 But there's a problem: the LLM called the tool, but it never got to see the result and form a final text response. That's because the API stops after the tool call — the LLM needs another round to process the tool result and generate text.
 
@@ -254,16 +252,14 @@ When you pass tools to the LLM, the API includes the JSON Schema definitions in 
   "tools": [
     {
       "type": "function",
-      "function": {
-        "name": "read_file",
-        "description": "Read the contents of a file at the specified path.",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "path": { "type": "string", "description": "The path to the file to read" }
-          },
-          "required": ["path"]
-        }
+      "name": "read_file",
+      "description": "Read the contents of a file at the specified path.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "The path to the file to read" }
+        },
+        "required": ["path"]
       }
     }
   ]

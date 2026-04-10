@@ -80,17 +80,15 @@ client = OpenAI()
 
 
 def multi_turn_with_mocks(data: dict[str, Any]) -> MultiTurnResult:
-    """Run a multi-turn evaluation with mocked tools."""
+    """Run a multi-turn evaluation with mocked tools using the Responses API."""
     tool_definitions, executor_map = build_mocked_tools(data["mock_tools"])
 
-    # Build messages
+    # Build the input items list (no system message — that goes in `instructions`).
     if "messages" in data and data["messages"]:
-        messages = data["messages"]
+        # Strip any system message from supplied messages — `instructions` carries it.
+        input_items = [m for m in data["messages"] if m.get("role") != "system"]
     else:
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": data["prompt"]},
-        ]
+        input_items = [{"role": "user", "content": data["prompt"]}]
 
     model = "gpt-5-mini"
     max_steps = 20
@@ -103,81 +101,70 @@ def multi_turn_with_mocks(data: dict[str, Any]) -> MultiTurnResult:
     final_text = ""
 
     for step_num in range(max_steps):
-        response = client.chat.completions.create(
+        response = client.responses.create(
             model=model,
-            messages=messages,
+            instructions=SYSTEM_PROMPT,
+            input=input_items,
             tools=tool_definitions if tool_definitions else None,
         )
 
-        message = response.choices[0].message
-        finish_reason = response.choices[0].finish_reason
-
         step_data: dict[str, Any] = {}
+        step_tool_calls = []
+        step_tool_results = []
+        step_text = ""
 
-        # Process tool calls
-        if message.tool_calls:
-            step_tool_calls = []
-            step_tool_results = []
+        # Walk every output item: append to history, collect function_calls,
+        # and capture any assistant text for the step record.
+        function_calls = []
+        for item in response.output:
+            item_dict = item.model_dump(exclude_none=True)
+            input_items.append(item_dict)
 
-            # Add assistant message to history
-            messages.append({
-                "role": "assistant",
-                "content": message.content,
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in message.tool_calls
-                ],
-            })
-
-            for tc in message.tool_calls:
-                tool_name = tc.function.name
-                args = json.loads(tc.function.arguments)
-                all_tool_calls.append(tool_name)
-
-                step_tool_calls.append({
-                    "tool_name": tool_name,
+            if item_dict.get("type") == "function_call":
+                try:
+                    args = json.loads(item_dict.get("arguments") or "{}")
+                except json.JSONDecodeError:
+                    args = {}
+                function_calls.append({
+                    "call_id": item_dict["call_id"],
+                    "name": item_dict["name"],
                     "args": args,
                 })
+            elif item_dict.get("type") == "message":
+                # Assistant message — extract text from its content parts
+                for part in item_dict.get("content", []):
+                    if part.get("type") == "output_text":
+                        step_text += part.get("text", "")
 
-                # Execute mock tool
+        if function_calls:
+            for fc in function_calls:
+                tool_name = fc["name"]
+                args = fc["args"]
+                all_tool_calls.append(tool_name)
+                step_tool_calls.append({"tool_name": tool_name, "args": args})
+
                 executor = executor_map.get(tool_name)
                 result = executor(args) if executor else f"Unknown tool: {tool_name}"
+                step_tool_results.append({"tool_name": tool_name, "result": result})
 
-                step_tool_results.append({
-                    "tool_name": tool_name,
-                    "result": result,
-                })
-
-                # Add tool result to history
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": result,
+                # Append the function_call_output item back into the input
+                input_items.append({
+                    "type": "function_call_output",
+                    "call_id": fc["call_id"],
+                    "output": result,
                 })
 
             step_data["tool_calls"] = step_tool_calls
             step_data["tool_results"] = step_tool_results
 
-        # Process text
-        if message.content:
-            step_data["text"] = message.content
-            final_text = message.content
+        if step_text:
+            step_data["text"] = step_text
+            final_text = step_text
 
         steps.append(step_data)
 
-        # Stop if no tool calls (LLM is done)
-        if finish_reason != "tool_calls":
-            messages.append({
-                "role": "assistant",
-                "content": message.content or "",
-            })
+        # Stop if the model didn't call any tools this turn (it's done)
+        if not function_calls:
             break
 
     tools_used = list(set(all_tool_calls))
@@ -190,7 +177,7 @@ def multi_turn_with_mocks(data: dict[str, Any]) -> MultiTurnResult:
     )
 ```
 
-Key difference from `single_turn_executor`: we loop up to `max_steps`, executing mocked tools and feeding results back. This simulates the full agent loop without side effects.
+Key difference from `single_turn_executor`: we loop up to `max_steps`, executing mocked tools and feeding results back via `function_call_output` items. This simulates the full agent loop without side effects.
 
 ## New Evaluators
 

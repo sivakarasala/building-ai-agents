@@ -119,7 +119,13 @@ from src.agent.system.prompt import SYSTEM_PROMPT
 def build_messages(
     data: dict[str, Any],
 ) -> list[dict[str, str]]:
-    """Build message array from eval data."""
+    """Build message array from eval data.
+
+    Returns a Responses API input list. The system prompt is also returned in
+    the array (as a system message) so existing tests that index msgs[0] /
+    msgs[1] keep working — single_turn_executor pulls it out and passes it via
+    `instructions` instead.
+    """
     system_prompt = data.get("system_prompt") or SYSTEM_PROMPT
     return [
         {"role": "system", "content": system_prompt},
@@ -144,15 +150,14 @@ def build_mocked_tools(
         for param_name in config["parameters"]:
             properties[param_name] = {"type": "string"}
 
+        # Responses API uses the flat tool shape (no nested "function" wrapper).
         tool_def = {
             "type": "function",
-            "function": {
-                "name": name,
-                "description": config["description"],
-                "parameters": {
-                    "type": "object",
-                    "properties": properties,
-                },
+            "name": name,
+            "description": config["description"],
+            "parameters": {
+                "type": "object",
+                "properties": properties,
             },
         }
         tool_definitions.append(tool_def)
@@ -182,36 +187,44 @@ def single_turn_executor(
     data: dict[str, Any],
     available_tools: list[dict],
 ) -> SingleTurnResult:
-    """Run a single-turn evaluation. Gets tool selection without executing."""
-    messages = build_messages(data)
+    """Run a single-turn evaluation. Gets tool selection without executing.
+
+    Uses the Responses API. `available_tools` is a list of flat-format tool
+    definitions ({"type": "function", "name": ..., ...}).
+    """
+    msgs = build_messages(data)
+    # build_messages returns [system, user]; pull the system out into
+    # `instructions` and send the rest as input items.
+    system_prompt = msgs[0]["content"]
+    input_items = msgs[1:]
 
     # Filter to only tools specified in data
     tool_names_wanted = set(data["tools"])
-    tools = [
-        t for t in available_tools
-        if t["function"]["name"] in tool_names_wanted
-    ]
+    tools = [t for t in available_tools if t.get("name") in tool_names_wanted]
 
     model = "gpt-5-mini"
     if data.get("config") and data["config"].get("model"):
         model = data["config"]["model"]
 
-    response = client.chat.completions.create(
+    response = client.responses.create(
         model=model,
-        messages=messages,
+        instructions=system_prompt,
+        input=input_items,
         tools=tools if tools else None,
     )
 
-    message = response.choices[0].message
-
-    # Extract tool calls
+    # Walk response.output for function_call items
     tool_calls = []
     tool_names = []
-    if message.tool_calls:
-        for tc in message.tool_calls:
-            args = json.loads(tc.function.arguments)
-            tool_calls.append({"tool_name": tc.function.name, "args": args})
-            tool_names.append(tc.function.name)
+    for item in response.output:
+        item_dict = item.model_dump(exclude_none=True)
+        if item_dict.get("type") == "function_call":
+            try:
+                args = json.loads(item_dict.get("arguments") or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            tool_calls.append({"tool_name": item_dict["name"], "args": args})
+            tool_names.append(item_dict["name"])
 
     return SingleTurnResult(
         tool_calls=tool_calls,
@@ -220,7 +233,7 @@ def single_turn_executor(
     )
 ```
 
-Key detail: we use `client.chat.completions.create()` without streaming and don't pass tool results back. We only want to see which tools the LLM *selects*, not what happens when they run. This makes the eval fast and deterministic (no actual file I/O).
+Key detail: we use `client.responses.create()` without streaming and don't pass tool results back. We only want to see which tools the LLM *selects*, not what happens when they run. This makes the eval fast and deterministic (no actual file I/O).
 
 ## Writing Evaluators
 

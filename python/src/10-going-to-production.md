@@ -43,9 +43,10 @@ def with_retry(fn, max_retries=3, base_delay=1.0):
 Apply to every LLM call:
 
 ```python
-response = with_retry(lambda: client.chat.completions.create(
+response = with_retry(lambda: client.responses.create(
     model=MODEL_NAME,
-    messages=messages,
+    instructions=SYSTEM_PROMPT,
+    input=input_items,
     tools=ALL_TOOLS,
     stream=True,
 ))

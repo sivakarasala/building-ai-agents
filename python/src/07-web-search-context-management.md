@@ -13,7 +13,7 @@ These are related because web search results can be large, which accelerates con
 
 ## Adding Web Search
 
-OpenAI provides a built-in web search tool that runs on their infrastructure. We use it via the `web_search_preview` tool type.
+OpenAI provides a built-in web search tool that runs on their infrastructure. With the Responses API we use it via the `web_search` tool type.
 
 Create `src/agent/tools/web_search.py`:
 
@@ -23,7 +23,7 @@ from typing import Any
 # Web search is a provider-managed tool — OpenAI handles execution.
 # We just define it so the API knows to enable it.
 WEB_SEARCH_TOOL = {
-    "type": "web_search_preview",
+    "type": "web_search",
 }
 
 
@@ -96,34 +96,46 @@ from typing import Any
 def filter_compatible_messages(
     messages: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Filter conversation history to only include compatible message formats.
+    """Filter conversation history into a clean Responses API input list.
 
-    Provider tools (like web_search) may return messages with formats that
-    cause issues when passed back to subsequent API calls.
+    The Responses API uses a list of "input items":
+      - role-based messages: {"role": "user"|"assistant"|"system", "content": ...}
+      - typed items: {"type": "function_call", ...}, {"type": "function_call_output", ...},
+        {"type": "web_search_call", ...}, etc.
+
+    We drop empty assistant messages (no useful content) but keep all typed
+    items so function_call / function_call_output pairs stay intact for the
+    next turn.
     """
-    filtered = []
+    filtered: list[dict[str, Any]] = []
+
     for msg in messages:
+        # Typed items (function_call, function_call_output, web_search_call, …)
+        # are always kept verbatim.
+        if "type" in msg and "role" not in msg:
+            filtered.append(msg)
+            continue
+
         role = msg.get("role")
 
-        # Always keep user and system messages
-        if role in ("user", "system"):
+        if role in ("user", "system", "developer"):
             filtered.append(msg)
             continue
 
-        # Keep tool messages
-        if role == "tool":
-            filtered.append(msg)
-            continue
-
-        # Keep assistant messages that have text content or tool calls
         if role == "assistant":
             content = msg.get("content")
-            has_text = isinstance(content, str) and content.strip()
-            has_tool_calls = bool(msg.get("tool_calls"))
+            has_text = False
+            if isinstance(content, str) and content.strip():
+                has_text = True
+            elif isinstance(content, list) and content:
+                has_text = True
 
-            if has_text or has_tool_calls:
+            if has_text:
                 filtered.append(msg)
                 continue
+
+        # Anything else (e.g. legacy "tool" role from old transcripts) — skip
+        # silently rather than crashing the next request.
 
     return filtered
 ```
@@ -150,7 +162,23 @@ def estimate_tokens(text: str) -> int:
 
 
 def extract_message_text(message: dict[str, Any]) -> str:
-    """Extract text content from a message."""
+    """Extract text content from a Responses API input item.
+
+    Handles:
+      - role-based messages: {"role": ..., "content": str | list}
+      - typed items: function_call, function_call_output, web_search_call, …
+    """
+    item_type = message.get("type")
+
+    # Responses API typed items
+    if item_type == "function_call":
+        return f"{message.get('name', '')}({message.get('arguments', '')})"
+    if item_type == "function_call_output":
+        return str(message.get("output", ""))
+    if item_type and "content" not in message:
+        # other typed items (web_search_call, reasoning, etc.) — fall back to dump
+        return json.dumps(message)
+
     content = message.get("content")
 
     if isinstance(content, str):
@@ -171,10 +199,6 @@ def extract_message_text(message: dict[str, Any]) -> str:
         return " ".join(parts)
 
     if content is None:
-        # Check for tool calls
-        tool_calls = message.get("tool_calls", [])
-        if tool_calls:
-            return json.dumps(tool_calls)
         return ""
 
     return json.dumps(content)
@@ -188,8 +212,9 @@ class TokenUsage:
 
 
 def estimate_messages_tokens(messages: list[dict[str, Any]]) -> TokenUsage:
-    """Estimate token counts for a message array.
-    Separates input (user, system, tool) from output (assistant).
+    """Estimate token counts for a Responses API input item array.
+    Separates input (user/system/function results) from output (assistant text,
+    function calls, model-generated typed items).
     """
     input_tokens = 0
     output_tokens = 0
@@ -198,7 +223,17 @@ def estimate_messages_tokens(messages: list[dict[str, Any]]) -> TokenUsage:
         text = extract_message_text(message)
         tokens = estimate_tokens(text)
 
-        if message.get("role") == "assistant":
+        item_type = message.get("type")
+        role = message.get("role")
+
+        is_output = (
+            role == "assistant"
+            or item_type == "function_call"
+            or item_type == "reasoning"
+            or item_type == "web_search_call"
+        )
+
+        if is_output:
             output_tokens += tokens
         else:
             input_tokens += tokens
@@ -312,14 +347,14 @@ def compact_conversation(
 
     conversation_text = messages_to_text(conversation_messages)
 
-    response = client.chat.completions.create(
+    response = client.responses.create(
         model=model,
-        messages=[
+        input=[
             {"role": "user", "content": SUMMARIZATION_PROMPT + conversation_text}
         ],
     )
 
-    summary = response.choices[0].message.content
+    summary = response.output_text
 
     return [
         {
@@ -388,7 +423,8 @@ def run_agent(
     # Filter and check if we need to compact
     working_history = filter_compatible_messages(conversation_history)
     pre_check_tokens = estimate_messages_tokens([
-        {"role": "system", "content": SYSTEM_PROMPT},
+        # Count the system prompt towards usage even though it's sent via `instructions`
+        {"role": "user", "content": SYSTEM_PROMPT},
         *working_history,
         {"role": "user", "content": user_message},
     ])
@@ -396,8 +432,7 @@ def run_agent(
     if is_over_threshold(pre_check_tokens.total, model_limits.context_window):
         working_history = compact_conversation(working_history, MODEL_NAME)
 
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+    input_items: list[dict[str, Any]] = [
         *working_history,
         {"role": "user", "content": user_message},
     ]
@@ -405,7 +440,9 @@ def run_agent(
     # Report token usage
     def report_token_usage():
         if callbacks.on_token_usage:
-            usage = estimate_messages_tokens(messages)
+            usage = estimate_messages_tokens(
+                [{"role": "user", "content": SYSTEM_PROMPT}, *input_items]
+            )
             callbacks.on_token_usage(TokenUsageInfo(
                 input_tokens=usage.input,
                 output_tokens=usage.output,
@@ -419,7 +456,7 @@ def run_agent(
 
     report_token_usage()
 
-    # ... rest of the loop (call report_token_usage() after each tool result)
+    # ... rest of the loop (call report_token_usage() after each turn)
 ```
 
 ## Summary
