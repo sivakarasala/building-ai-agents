@@ -2,10 +2,10 @@
 authors = ["Siva Karasala"]
 language = "en"
 src = "src"
-title = "Building AI Agents Without Writing Code"
+title = "Vibe Coding an AI Agent"
 
 [build]
-build-dir = "../docs/no-code"
+build-dir = "../docs/vibe-coding"
 
 [output.html]
 default-theme = "navy"

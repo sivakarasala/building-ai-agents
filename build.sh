@@ -18,8 +18,8 @@ echo "Building Go edition..."
 echo "Building Java edition..."
 (cd "$ROOT/java" && mdbook build)
 
-echo "Building No-Code edition..."
-(cd "$ROOT/no-code" && mdbook build)
+echo "Building Vibe Coding edition..."
+(cd "$ROOT/vibe-coding" && mdbook build)
 
 # Copy landing page to docs root
 cp "$ROOT/index.html" "$ROOT/docs/index.html"

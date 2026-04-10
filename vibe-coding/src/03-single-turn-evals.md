@@ -289,4 +289,4 @@ You now have the three pillars of every agent: a model call, tool definitions, a
 
 ---
 
-Congratulations — you've built and tested the foundation of an AI agent without writing a line of code yourself. The remaining chapters of this book follow the same prompt-driven format. When you're ready, continue to the [Python edition](https://sivakarasala.github.io/building-ai-agents/python/) for the canonical walkthrough of Chapters 4–10 — or, when this no-code edition expands, come back here.
+Congratulations — you've built and tested the foundation of an AI agent without writing a line of code yourself. The remaining chapters of this book follow the same prompt-driven format. When you're ready, continue to the [Python edition](https://sivakarasala.github.io/building-ai-agents/python/) for the canonical walkthrough of Chapters 4–10 — or, when this vibe-coding edition expands, come back here.

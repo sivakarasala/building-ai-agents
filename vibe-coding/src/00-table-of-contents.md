@@ -1,4 +1,4 @@
-# Building AI Agents Without Writing Code
+# Vibe Coding an AI Agent
 
 A hands-on guide for product managers, product owners, designers, analysts, and anyone else who wants to *understand* AI agents by building one — without learning a programming language first.
 
