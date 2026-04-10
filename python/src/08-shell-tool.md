@@ -1,5 +1,7 @@
 # Chapter 8: Shell Tool
 
+> 💻 **Code:** start from the [`08-shell-tool`](https://github.com/sivakarasala/building-ai-agents-python/tree/08-shell-tool) branch of the [companion repo](https://github.com/sivakarasala/building-ai-agents-python). The branch's `notes/08-Shell-Tool.md` has the code you'll write in this chapter.
+
 ## The Most Powerful (and Dangerous) Tool
 
 A shell tool turns your agent into something genuinely powerful. With it, the agent can:

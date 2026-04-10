@@ -1,5 +1,7 @@
 # Chapter 1: Introduction to AI Agents
 
+> 💻 **Code:** start from the [`01-intro-to-agents`](https://github.com/sivakarasala/building-ai-agents-python/tree/01-intro-to-agents) branch of the [companion repo](https://github.com/sivakarasala/building-ai-agents-python). The branch's `notes/01-Intro-to-Agents.md` has the code you'll write in this chapter.
+
 ## What is an AI Agent?
 
 A chatbot takes your message, sends it to an LLM, and returns the response. That's one turn — input in, output out.

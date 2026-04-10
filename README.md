@@ -31,6 +31,8 @@ Built with the Vercel AI SDK, Zod schemas, and React + Ink for the terminal UI.
 
 Uses the OpenAI SDK, dataclasses, and Rich + Prompt Toolkit for the terminal UI.
 
+**Companion code repo:** [sivakarasala/building-ai-agents-python](https://github.com/sivakarasala/building-ai-agents-python) — one branch per chapter (`01-intro-to-agents` … `09-hitl`, plus `done` for the finished app).
+
 | Chapter | Topic |
 |---------|-------|
 | 1 | [Intro to Agents](https://sivakarasala.github.io/building-ai-agents/python/01-intro-to-agents.html) |

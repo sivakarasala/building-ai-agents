@@ -1,5 +1,7 @@
 # Chapter 3: Single-Turn Evaluations
 
+> 💻 **Code:** start from the [`03-single-turn-evals`](https://github.com/sivakarasala/building-ai-agents-python/tree/03-single-turn-evals) branch of the [companion repo](https://github.com/sivakarasala/building-ai-agents-python). The branch's `notes/03-Single-Turn-Evals.md` has the code you'll write in this chapter.
+
 ## Why Evaluate?
 
 You've defined tools and the LLM seems to pick the right ones. But "seems to" isn't good enough. LLMs are probabilistic — they might select the right tool 90% of the time but fail on edge cases. Without evaluations, you won't know until a user hits the bug.

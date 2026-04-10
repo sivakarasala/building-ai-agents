@@ -1,5 +1,7 @@
 # Chapter 9: Human-in-the-Loop
 
+> 💻 **Code:** start from the [`09-hitl`](https://github.com/sivakarasala/building-ai-agents-python/tree/09-hitl) branch of the [companion repo](https://github.com/sivakarasala/building-ai-agents-python). The branch's `notes/09-HITL.md` has the code you'll write in this chapter. The finished app is on the [`done`](https://github.com/sivakarasala/building-ai-agents-python/tree/done) branch.
+
 ## The Safety Layer
 
 We've built an agent with seven tools. Four of them can modify your system: write_file, delete_file, run_command, and execute_code. Right now, the agent auto-approves everything — if the LLM says "delete this file," it happens immediately.

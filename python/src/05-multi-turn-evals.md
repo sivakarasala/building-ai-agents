@@ -1,5 +1,7 @@
 # Chapter 5: Multi-Turn Evaluations
 
+> 💻 **Code:** start from the [`05-multi-turn-evals`](https://github.com/sivakarasala/building-ai-agents-python/tree/05-multi-turn-evals) branch of the [companion repo](https://github.com/sivakarasala/building-ai-agents-python). The branch's `notes/05-Multi-turn-Evals.md` has the code you'll write in this chapter.
+
 ## Beyond Single Turns
 
 Single-turn evals test tool selection — "given this prompt, does the LLM pick the right tool?" But agents are multi-turn. A real task might require:

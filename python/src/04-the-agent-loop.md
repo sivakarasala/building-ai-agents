@@ -1,5 +1,7 @@
 # Chapter 4: The Agent Loop
 
+> 💻 **Code:** start from the [`04-the-agent-loop`](https://github.com/sivakarasala/building-ai-agents-python/tree/04-the-agent-loop) branch of the [companion repo](https://github.com/sivakarasala/building-ai-agents-python). The branch's `notes/04-The-Agent-Loop.md` has the code you'll write in this chapter.
+
 ## The Heart of an Agent
 
 This is the most important chapter in the book. Everything before this was setup. Everything after builds on this.

@@ -4,6 +4,8 @@ A hands-on guide to building a fully functional AI agent with tool calling, eval
 
 > Inspired by and adapted from [Hendrixer/agents-v2](https://github.com/Hendrixer/agents-v2) and the [AI Agents v2 course on Frontend Masters](https://frontendmasters.com/courses/ai-agents-v2/) by Scott Moss. The original course builds the agent in TypeScript; this edition reimagines the same architecture in Python.
 
+> 💻 **Companion code repo:** [sivakarasala/building-ai-agents-python](https://github.com/sivakarasala/building-ai-agents-python). The repo has one branch per chapter — check out `01-intro-to-agents` to start, work through each lesson, and compare against the `done` branch for the finished app.
+
 ---
 
 ## What You'll Build
